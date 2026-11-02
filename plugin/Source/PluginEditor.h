@@ -5,11 +5,13 @@
 
 namespace prizan::ui
 {
+// 90s rack-synth palette: charcoal plastic, backlit LCD, orange accent stripe.
 namespace colours
 {
-    const juce::Colour page { 0xffe4ebe5 }, panel { 0xffffffff }, line { 0xffd6dfd8 }, ink { 0xff16241b },
-                       muted { 0xff6a7b70 }, green { 0xff1fae5b }, greenDeep { 0xff15824a }, track { 0xff183a26 },
-                       screen { 0xff0d2217 }, screenHi { 0xff14301f }, wave { 0xff5ef29a }, bar { 0xfff5f8f5 };
+    const juce::Colour room { 0xff161719 }, panel { 0xff2a2c2f }, panelHi { 0xff36393d }, panelLo { 0xff202225 },
+                       silk { 0xffe8e6df }, silkDim { 0xff9a9c9e }, accent { 0xffe8742a }, led { 0xffff3b2f },
+                       ledOff { 0xff4a1a16 }, lcdTop { 0xffbdd673 }, lcdBottom { 0xff9db552 }, lcdInk { 0xff1e2a0e },
+                       bezel { 0xff0c0d0e }, knobHi { 0xff3d4044 }, knobLo { 0xff111214 };
 }
 
 class Look : public juce::LookAndFeel_V4
@@ -21,6 +23,7 @@ public:
                            juce::Slider::SliderStyle, juce::Slider&) override;
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool over, bool down) override;
     void drawButtonText (juce::Graphics&, juce::TextButton&, bool over, bool down) override;
+    void drawPopupMenuBackground (juce::Graphics&, int w, int h) override;
 };
 
 // Pitch snaps to whole semitones; hold Shift for cents.
@@ -32,7 +35,7 @@ struct PitchSlider : juce::Slider
     }
 };
 
-// The screen: waveform, envelope, hand-drawn points, stretch grip.
+// The LCD: waveform, envelope, hand-drawn points, stretch grip, parameter readout.
 class Display : public juce::Component
 {
 public:
@@ -44,10 +47,12 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void refreshPoints();
+    void flash (const juce::String& name, const juce::String& value) { flashText = name.toUpperCase() + "  " + value; flashTicks = 45; }
+    void tick() { if (flashTicks > 0) --flashTicks; }
     bool dropHighlight = false;
 
 private:
-    struct Geo { float W, top, bot, mid, amp; double T; };
+    struct Geo { float x0, W, top, bot, mid, amp; double T; };
     Geo geo() const;
     prizan::Params params() const;
     int hitPoint (juce::Point<float>) const;
@@ -63,6 +68,8 @@ private:
     int dragIndex = -1;
     float bendStart = 0, bendDir = 1, dragStartY = 0, gripStartX = 0, gripStartValue = 1;
     juce::Rectangle<float> clearArea;
+    juce::String flashText;
+    int flashTicks = 0;
 };
 
 // A tile you drag straight into the DAW; it renders the current sound to a WAV first.
@@ -78,6 +85,19 @@ public:
 private:
     PrizanProcessor& proc;
     bool dragging = false;
+};
+
+// Sample folders the user added from Finder, shared by every Prizan instance.
+class Library
+{
+public:
+    Library();
+    juce::StringArray folders() const;
+    void add (const juce::File& dir);
+    void remove (const juce::File& dir);
+
+private:
+    std::unique_ptr<juce::PropertiesFile> props;
 };
 } // namespace prizan::ui
 
@@ -102,22 +122,28 @@ private:
     void timerCallback() override;
     void loadFile (const juce::File&);
     void setStatus (const juce::String&);
-    void setupKnob (juce::Slider&, const char* id, bool bipolar);
+    void setupKnob (juce::Slider&, const char* id, const char* name, bool bipolar);
+    void showBrowseMenu();
+    void addFolder();
+    void step (int delta);
 
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     PrizanProcessor& proc;
     prizan::ui::Look look;
+    prizan::ui::Library library;
     prizan::ui::Display display;
     juce::Slider attack, decay, release, flanger, tone, width;
     prizan::ui::PitchSlider pitch;
     juce::Slider mix, rate, feedback, volume;
-    juce::TextButton reverseBtn { "Reverse" }, loadBtn { "Load file" }, playBtn { "Play" }, saveBtn { "Save WAV" };
+    juce::TextButton browseBtn { "BROWSE" }, prevBtn { "<" }, nextBtn { ">" };
+    juce::TextButton reverseBtn { "REVERSE" }, loadBtn { "LOAD FILE" }, playBtn { "PLAY" }, saveBtn { "SAVE WAV" };
     prizan::ui::DragOut dragOut;
     std::vector<std::unique_ptr<SA>> sliderAttachments;
     std::unique_ptr<BA> reverseAttachment;
     std::unique_ptr<juce::FileChooser> chooser;
+    std::vector<juce::File> menuFiles;
     juce::String status;
     int statusTicks = 0;
 

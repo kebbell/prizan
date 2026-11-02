@@ -3,97 +3,177 @@
 using namespace juce;
 namespace prizan::ui
 {
-static Font mono (float size) { return Font (FontOptions ("Menlo", size, Font::plain)); }
-static Font sans (float size, int style = Font::plain) { return Font (FontOptions (size, style)); }
+static Font mono (float size, bool bold = false) { return Font (FontOptions ("Menlo", size, bold ? Font::bold : Font::plain)); }
+static Font sans (float size, int style = Font::plain) { return Font (FontOptions ("Helvetica Neue", size, style)); }
+static const char* audioWildcard = "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.ogg;*.m4a;*.caf";
+
+static bool isAudio (const File& f) { return f.existsAsFile() && f.hasFileExtension ("wav;aif;aiff;flac;mp3;ogg;m4a;caf"); }
 
 //==============================================================================
 Look::Look()
 {
-    setColour (ResizableWindow::backgroundColourId, colours::page);
-    setColour (PopupMenu::backgroundColourId, colours::panel);
-    setColour (PopupMenu::textColourId, colours::ink);
+    setColour (ResizableWindow::backgroundColourId, colours::room);
+    setColour (PopupMenu::backgroundColourId, colours::panelHi);
+    setColour (PopupMenu::textColourId, colours::silk);
+    setColour (PopupMenu::highlightedBackgroundColourId, colours::accent);
+    setColour (PopupMenu::highlightedTextColourId, Colours::black);
+    setColour (PopupMenu::headerTextColourId, colours::silkDim);
+}
+
+void Look::drawPopupMenuBackground (Graphics& g, int w, int h)
+{
+    g.fillAll (colours::panelHi);
+    g.setColour (colours::bezel);
+    g.drawRect (0, 0, w, h, 1);
 }
 
 void Look::drawRotarySlider (Graphics& g, int x, int y, int w, int h, float pos, float a0, float a1, Slider& s)
 {
     const auto bounds = Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
-    const float size = std::min (bounds.getWidth(), bounds.getHeight());
-    const float stroke = size > 110.0f ? 12.0f : 11.0f;
-    const float r = size * 0.5f - stroke * 0.5f - 1.0f;
+    const float R = std::min (bounds.getWidth(), bounds.getHeight()) * 0.5f;
     const auto c = bounds.getCentre();
-    const PathStrokeType st (stroke, PathStrokeType::curved, PathStrokeType::butt);
+    const bool bipolar = (bool) s.getProperties()["bipolar"];
+    auto at = [c] (float a, float r) { return c + Point<float> (std::sin (a), -std::cos (a)) * r; };
 
-    Path trk;
-    trk.addCentredArc (c.x, c.y, r, r, 0.0f, a0, a1, true);
-    g.setColour (colours::track);
-    g.strokePath (trk, st);
-
-    const float a = a0 + pos * (a1 - a0);
-    const float from = (bool) s.getProperties()["bipolar"] ? 0.0f : a0;
-    if (std::abs (a - from) > 0.001f)
+    // printed scale
+    for (int i = 0; i <= 10; ++i)
     {
-        Path v;
-        v.addCentredArc (c.x, c.y, r, r, 0.0f, std::min (from, a), std::max (from, a), true);
-        g.setColour (colours::green);
-        g.strokePath (v, st);
+        const float a = a0 + (a1 - a0) * (float) i / 10.0f;
+        const bool major = i == 0 || i == 10 || (bipolar && i == 5);
+        g.setColour (major ? colours::silk : colours::silkDim);
+        g.drawLine (Line<float> (at (a, R - (major ? 7.0f : 5.0f)), at (a, R - 1.0f)), major ? 1.8f : 1.2f);
     }
 
-    const float dr = r - stroke * 0.5f - 3.0f;
-    const auto disc = Rectangle<float> (dr * 2.0f, dr * 2.0f).withCentre (c);
-    Path discPath;
-    discPath.addEllipse (disc);
-    DropShadow (Colours::black.withAlpha (0.25f), 6, { 0, 2 }).drawForPath (g, discPath);
-    g.setGradientFill (ColourGradient (Colours::white, c.x - dr * 0.3f, c.y - dr * 0.5f, Colour (0xffe9eeea), c.x, c.y + dr, true));
-    g.fillPath (discPath);
+    // thin value arc just inside the scale
+    const float a = a0 + pos * (a1 - a0), from = bipolar ? 0.0f : a0;
+    if (std::abs (a - from) > 0.001f)
+    {
+        Path arc;
+        arc.addCentredArc (c.x, c.y, R - 9.5f, R - 9.5f, 0.0f, std::min (from, a), std::max (from, a), true);
+        g.setColour (colours::accent);
+        g.strokePath (arc, PathStrokeType (2.0f));
+    }
 
-    const Point<float> dir (std::sin (a), -std::cos (a));
-    g.setColour (colours::greenDeep);
-    g.drawLine (Line<float> (c + dir * (dr - 1.0f), c + dir * (dr - (size > 110.0f ? 12.0f : 8.0f))), 2.0f);
+    // knob body: knurled skirt and a darker cap
+    const float kr = R - 12.0f;
+    Path body;
+    body.addEllipse (Rectangle<float> (kr * 2, kr * 2).withCentre (c));
+    DropShadow (Colours::black.withAlpha (0.7f), 8, { 0, 3 }).drawForPath (g, body);
+    g.setGradientFill (ColourGradient (colours::knobHi, c.x, c.y - kr, colours::knobLo, c.x, c.y + kr, false));
+    g.fillPath (body);
+    g.setColour (Colours::black.withAlpha (0.55f));
+    for (int i = 0; i < 40; ++i)
+    {
+        const float ka = MathConstants<float>::twoPi * (float) i / 40.0f;
+        g.drawLine (Line<float> (at (ka, kr - 3.5f), at (ka, kr - 0.5f)), 1.0f);
+    }
+    const float cr = kr * 0.74f;
+    g.setGradientFill (ColourGradient (Colour (0xff34373b), c.x, c.y - cr, Colour (0xff17181a), c.x, c.y + cr, false));
+    g.fillEllipse (Rectangle<float> (cr * 2, cr * 2).withCentre (c));
+    g.setColour (Colours::white.withAlpha (0.08f));
+    g.drawEllipse (Rectangle<float> (cr * 2, cr * 2).withCentre (c), 1.0f);
 
-    g.setColour (colours::muted);
-    g.setFont (mono (size > 110.0f ? 14.0f : 11.0f));
-    g.drawText (s.getTextFromValue (s.getValue()), disc.reduced (4.0f, 0.0f), Justification::centred, false);
+    g.setColour (colours::silk);
+    g.drawLine (Line<float> (at (a, kr * 0.32f), at (a, kr - 2.0f)), kr > 40.0f ? 3.2f : 2.6f);
 }
 
 void Look::drawLinearSlider (Graphics& g, int x, int y, int w, int h, float pos, float, float, Slider::SliderStyle, Slider&)
 {
     const float cy = (float) y + (float) h * 0.5f;
-    const auto r = Rectangle<float> ((float) x, cy - 3.0f, (float) w, 6.0f);
-    g.setColour (colours::track);
-    g.fillRoundedRectangle (r, 3.0f);
-    g.setColour (colours::green);
-    g.fillRoundedRectangle (r.withRight (pos), 3.0f);
-    const auto thumb = Rectangle<float> (16.0f, 16.0f).withCentre ({ pos, cy });
-    g.setColour (Colours::black.withAlpha (0.18f));
-    g.fillEllipse (thumb.translated (0.0f, 1.5f));
-    g.setColour (Colours::white);
-    g.fillEllipse (thumb);
-    g.setColour (colours::greenDeep);
-    g.drawEllipse (thumb.reduced (1.0f), 2.0f);
+    const auto slot = Rectangle<float> ((float) x, cy - 2.5f, (float) w, 5.0f);
+    g.setColour (Colours::black);
+    g.fillRoundedRectangle (slot, 2.5f);
+    g.setColour (Colours::white.withAlpha (0.08f));
+    g.fillRect (slot.getX(), slot.getBottom(), slot.getWidth(), 1.0f);
+    g.setColour (colours::accent.withAlpha (0.85f));
+    g.fillRect ((float) x + 1.0f, cy - 0.75f, pos - (float) x - 1.0f, 1.5f);
+
+    const auto cap = Rectangle<float> (14.0f, 24.0f).withCentre ({ pos, cy });
+    g.setColour (Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (cap.translated (0.0f, 2.0f), 2.0f);
+    g.setGradientFill (ColourGradient (Colour (0xff6e7176), cap.getX(), cap.getY(), Colour (0xff3a3d41), cap.getX(), cap.getBottom(), false));
+    g.fillRoundedRectangle (cap, 2.0f);
+    g.setColour (Colours::black);
+    g.drawRoundedRectangle (cap, 2.0f, 1.0f);
+    g.setColour (colours::silk);
+    g.fillRect (cap.getCentreX() - 1.0f, cap.getY() + 3.0f, 2.0f, cap.getHeight() - 6.0f);
 }
 
 void Look::drawButtonBackground (Graphics& g, Button& b, const Colour&, bool over, bool down)
 {
-    const auto r = b.getLocalBounds().toFloat().reduced (1.0f);
-    const bool on = b.getToggleState(), go = (bool) b.getProperties()["go"];
-    Colour fill = on ? colours::track : go ? colours::green : colours::panel;
-    if (down) fill = fill.darker (0.12f);
-    else if (over) fill = fill.darker (0.05f);
-    g.setColour (fill);
-    g.fillRoundedRectangle (r, 6.0f);
-    if (! on && ! go)
+    auto r = b.getLocalBounds().toFloat().reduced (1.0f);
+    const bool go = (bool) b.getProperties()["go"];
+    if (! down)
     {
-        g.setColour (colours::line);
-        g.drawRoundedRectangle (r, 6.0f, 1.0f);
+        g.setColour (Colours::black.withAlpha (0.6f));
+        g.fillRoundedRectangle (r.translated (0.0f, 2.0f), 3.0f);
+    }
+    else r.translate (0.0f, 1.0f);
+    Colour top = go ? Colour (0xfff0843c) : Colour (0xff585c61), bottom = go ? Colour (0xffc85d1a) : Colour (0xff3e4146);
+    if (over && ! down) { top = top.brighter (0.08f); bottom = bottom.brighter (0.08f); }
+    if (down) { top = top.darker (0.15f); bottom = bottom.darker (0.15f); }
+    g.setGradientFill (ColourGradient (top, r.getX(), r.getY(), bottom, r.getX(), r.getBottom(), false));
+    g.fillRoundedRectangle (r, 3.0f);
+    g.setColour (Colours::black);
+    g.drawRoundedRectangle (r, 3.0f, 1.0f);
+    g.setColour (Colours::white.withAlpha (0.12f));
+    g.fillRect (r.getX() + 3.0f, r.getY() + 1.0f, r.getWidth() - 6.0f, 1.0f);
+
+    if ((bool) b.getProperties()["led"])
+    {
+        const auto led = Rectangle<float> (9.0f, 4.0f).withCentre ({ r.getX() + 12.0f, r.getCentreY() });
+        g.setColour (b.getToggleState() ? colours::led : colours::ledOff);
+        g.fillRoundedRectangle (led, 1.0f);
+        if (b.getToggleState())
+        {
+            g.setColour (colours::led.withAlpha (0.35f));
+            g.fillRoundedRectangle (led.expanded (3.0f), 3.0f);
+        }
     }
 }
 
-void Look::drawButtonText (Graphics& g, TextButton& b, bool, bool)
+void Look::drawButtonText (Graphics& g, TextButton& b, bool, bool down)
 {
-    const bool on = b.getToggleState(), go = (bool) b.getProperties()["go"];
-    g.setColour (on ? colours::wave : go ? Colours::white : colours::ink);
-    g.setFont (sans (14.0f, Font::bold));
-    g.drawText (b.getButtonText(), b.getLocalBounds(), Justification::centred, false);
+    const bool go = (bool) b.getProperties()["go"], led = (bool) b.getProperties()["led"];
+    auto r = b.getLocalBounds().toFloat().translated (0.0f, down ? 1.0f : 0.0f);
+    if (led) r.removeFromLeft (14.0f);
+    g.setColour (go ? Colour (0xff1a1206) : colours::silk);
+    g.setFont (sans (11.5f, Font::bold).withExtraKerningFactor (0.08f));
+    g.drawText (b.getButtonText(), r, Justification::centred, false);
+}
+
+//==============================================================================
+Library::Library()
+{
+    PropertiesFile::Options o;
+    o.applicationName = "Prizan";
+    o.filenameSuffix = ".settings";
+    o.folderName = "Prizan";
+    o.osxLibrarySubFolder = "Application Support";
+    props = std::make_unique<PropertiesFile> (o);
+}
+
+StringArray Library::folders() const
+{
+    auto list = StringArray::fromLines (props->getValue ("folders"));
+    list.removeEmptyStrings();
+    return list;
+}
+
+void Library::add (const File& dir)
+{
+    auto list = folders();
+    list.addIfNotAlreadyThere (dir.getFullPathName());
+    props->setValue ("folders", list.joinIntoString ("\n"));
+    props->saveIfNeeded();
+}
+
+void Library::remove (const File& dir)
+{
+    auto list = folders();
+    list.removeString (dir.getFullPathName());
+    props->setValue ("folders", list.joinIntoString ("\n"));
+    props->saveIfNeeded();
 }
 
 //==============================================================================
@@ -108,20 +188,21 @@ prizan::Params Display::params() const
     return p;
 }
 
+// all drawing happens inside the LCD glass, 8px in from the bezel
 Display::Geo Display::geo() const
 {
     const auto& info = proc.getSampleInfo();
-    const float h = (float) getHeight(), top = 30.0f, bot = h - 26.0f;
+    const float inset = 8.0f, h = (float) getHeight(), top = inset + 26.0f, bot = h - inset - 24.0f;
     const auto p = proc.currentParams();
     const double stretch = proc.apvts.getRawParameterValue ("stretch")->load();
-    return { (float) getWidth(), top, bot, (top + bot) * 0.5f, (bot - top) * 0.5f * 0.96f,
+    return { inset, (float) getWidth() - inset * 2.0f, top, bot, (top + bot) * 0.5f, (bot - top) * 0.5f * 0.96f,
              info.duration * stretch / std::pow (2.0, p.pitch / 12.0) };
 }
 
 Rectangle<float> Display::gripArea() const
 {
     const auto g = geo();
-    return { g.W - 16.0f, g.top, 16.0f, g.bot - g.top };
+    return { g.x0 + g.W - 16.0f, g.top, 16.0f, g.bot - g.top };
 }
 
 void Display::refreshPoints()
@@ -143,13 +224,13 @@ void Display::push()
 int Display::hitPoint (Point<float> m) const
 {
     const auto g = geo();
+    const auto pp = params();
     int best = -1;
     float bd = 12.0f;
     for (size_t i = 0; i < pts.size(); ++i)
     {
         const auto& p = pts[i];
-        const auto pp = params();
-        const Point<float> c (p.x * g.W, g.mid - (float) prizan::adrAt (pp, p.x * g.T, g.T) * p.y * g.amp);
+        const Point<float> c (g.x0 + p.x * g.W, g.mid - (float) prizan::adrAt (pp, p.x * g.T, g.T) * p.y * g.amp);
         const float d = c.getDistanceFrom (m);
         if (d < bd) { bd = d; best = (int) i; }
     }
@@ -161,7 +242,7 @@ void Display::movePoint (int i, Point<float> m)
     const auto g = geo();
     const float lo = i > 0 ? pts[(size_t) i - 1].x + 0.002f : 0.002f;
     const float hi = i < (int) pts.size() - 1 ? pts[(size_t) i + 1].x - 0.002f : 0.998f;
-    const float u = jlimit (lo, hi, m.x / g.W);
+    const float u = jlimit (lo, hi, (m.x - g.x0) / g.W);
     const float a = (float) prizan::adrAt (params(), u * g.T, g.T);
     const float v = jlimit (0.0f, 1.0f, (g.mid - m.y) / g.amp);
     pts[(size_t) i].x = u;
@@ -187,7 +268,7 @@ void Display::mouseDown (const MouseEvent& e)
     else if (e.mods.isCommandDown() || e.mods.isCtrlDown())
     {
         if (pts.size() >= 32) return;
-        const float u = jlimit (0.002f, 0.998f, m.x / g.W);
+        const float u = jlimit (0.002f, 0.998f, (m.x - g.x0) / g.W);
         size_t i = 0;
         while (i < pts.size() && pts[i].x <= u) ++i;
         pts.insert (pts.begin() + (long) i, { u, (float) prizan::shapeAt (params(), u), 0.0f });
@@ -197,7 +278,7 @@ void Display::mouseDown (const MouseEvent& e)
     }
     else if (e.mods.isAltDown())
     {
-        const float u = m.x / g.W;
+        const float u = (m.x - g.x0) / g.W;
         size_t s = 0;
         while (s < pts.size() && pts[s].x < u) ++s;
         const float y0 = s > 0 ? pts[s - 1].y : 1.0f, y1 = s < pts.size() ? pts[s].y : 1.0f;
@@ -220,6 +301,7 @@ void Display::mouseDrag (const MouseEvent& e)
         v = std::abs (v - 1.0f) < 0.02f ? 1.0f : jlimit (0.25f, 4.0f, v);
         auto* prm = proc.apvts.getParameter ("stretch");
         prm->setValueNotifyingHost (prm->convertTo0to1 (v));
+        flash ("Length", String (roundToInt (v * 100.0f)) + "%");
         repaint();
     }
     else if (drag == Drag::point) { movePoint (dragIndex, m); push(); }
@@ -266,17 +348,26 @@ void Display::mouseDoubleClick (const MouseEvent& e)
 void Display::paint (Graphics& g)
 {
     const auto b = getLocalBounds().toFloat();
-    g.setGradientFill (ColourGradient (colours::screenHi, 0, 0, colours::screen, 0, b.getHeight(), false));
+    const auto gg = geo();
+    const auto glass = Rectangle<float> (gg.x0, gg.x0, gg.W, b.getHeight() - gg.x0 * 2.0f);
+    const Colour ink = colours::lcdInk;
+
+    // bezel and backlit glass
+    g.setColour (colours::bezel);
     g.fillRoundedRectangle (b, 6.0f);
+    g.setGradientFill (ColourGradient (colours::lcdTop, 0, glass.getY(), colours::lcdBottom, 0, glass.getBottom(), false));
+    g.fillRoundedRectangle (glass, 3.0f);
+    g.setColour (ink.withAlpha (0.045f));
+    for (float x = glass.getX(); x < glass.getRight(); x += 3.0f) g.fillRect (x, glass.getY(), 1.0f, glass.getHeight());
+    for (float y = glass.getY(); y < glass.getBottom(); y += 3.0f) g.fillRect (glass.getX(), y, glass.getWidth(), 1.0f);
 
     const auto& info = proc.getSampleInfo();
-    const auto gg = geo();
-    const int W = getWidth();
+    const int W = (int) gg.W;
     const auto p = params();
 
-    g.setColour (colours::wave.withAlpha (0.08f));
-    for (int i = 1; i < 8; ++i) g.fillRect ((float) (i * W / 8), gg.top, 1.0f, gg.bot - gg.top);
-    g.fillRect (0.0f, gg.mid, (float) W, 1.0f);
+    g.setColour (ink.withAlpha (0.12f));
+    for (int i = 1; i < 8; ++i) g.fillRect (gg.x0 + (float) (i * W / 8), gg.top, 1.0f, gg.bot - gg.top);
+    g.fillRect (gg.x0, gg.mid, (float) W, 1.0f);
 
     if (! info.mins.empty() && W > 0)
     {
@@ -285,22 +376,22 @@ void Display::paint (Graphics& g)
         for (int x = 0; x < W; ++x) env[(size_t) x] = (float) prizan::envAt (p, (x + 0.5) / W * gg.T, gg.T);
 
         // shade what the envelope cuts away
-        g.setColour (Colours::black.withAlpha (0.35f));
+        g.setColour (ink.withAlpha (0.13f));
         for (const float s : { -1.0f, 1.0f })
         {
             Path sh;
-            sh.startNewSubPath (0.0f, s < 0 ? gg.top : gg.bot);
-            for (int x = 0; x < W; ++x) sh.lineTo ((float) x, gg.mid + s * env[(size_t) x] * gg.amp);
-            sh.lineTo ((float) W, s < 0 ? gg.top : gg.bot);
+            sh.startNewSubPath (gg.x0, s < 0 ? gg.top : gg.bot);
+            for (int x = 0; x < W; ++x) sh.lineTo (gg.x0 + (float) x, gg.mid + s * env[(size_t) x] * gg.amp);
+            sh.lineTo (gg.x0 + (float) W, s < 0 ? gg.top : gg.bot);
             sh.closeSubPath();
             g.fillPath (sh);
         }
 
-        // original (dim) and shaped (bright) waveform
+        // original (faint) and shaped (dark) waveform
         const int N = (int) info.mins.size();
         for (int pass = 0; pass < 2; ++pass)
         {
-            g.setColour (pass ? colours::wave : colours::wave.withAlpha (0.22f));
+            g.setColour (pass ? ink.withAlpha (0.9f) : ink.withAlpha (0.2f));
             for (int x = 0; x < W; ++x)
             {
                 const int b0 = x * N / W, b1 = std::max (b0 + 1, (x + 1) * N / W);
@@ -312,7 +403,7 @@ void Display::paint (Graphics& g)
                 }
                 const float kk = pass ? env[(size_t) x] : 1.0f;
                 const float y0 = gg.mid - hi * kk * gg.amp, y1 = gg.mid - lo * kk * gg.amp;
-                g.fillRect ((float) x, y0, 1.0f, std::max (0.6f, y1 - y0));
+                g.fillRect (gg.x0 + (float) x, y0, 1.0f, std::max (0.8f, y1 - y0));
             }
         }
 
@@ -320,98 +411,107 @@ void Display::paint (Graphics& g)
         for (int x = 0; x < W; ++x)
         {
             const float y = gg.mid - env[(size_t) x] * gg.amp;
-            if (x == 0) line.startNewSubPath (0.0f, y); else line.lineTo ((float) x, y);
+            if (x == 0) line.startNewSubPath (gg.x0, y); else line.lineTo (gg.x0 + (float) x, y);
         }
-        g.setColour (Colours::white.withAlpha (0.75f));
+        g.setColour (ink);
         g.strokePath (line, PathStrokeType (1.5f));
 
         for (size_t i = 0; i < pts.size(); ++i)
         {
             const auto& pt = pts[i];
-            const Point<float> c (pt.x * gg.W, gg.mid - (float) prizan::adrAt (p, pt.x * gg.T, gg.T) * pt.y * gg.amp);
+            const Point<float> c (gg.x0 + pt.x * gg.W, gg.mid - (float) prizan::adrAt (p, pt.x * gg.T, gg.T) * pt.y * gg.amp);
             const float r = (int) i == hot ? 6.0f : 4.5f;
-            g.setColour (Colours::white);
-            g.fillEllipse (Rectangle<float> (r * 2, r * 2).withCentre (c));
-            g.setColour (colours::green);
-            g.drawEllipse (Rectangle<float> (r * 2, r * 2).withCentre (c), 2.0f);
+            g.setColour (ink);
+            g.fillRect (Rectangle<float> (r * 2, r * 2).withCentre (c));
+            g.setColour (colours::lcdTop);
+            g.fillRect (Rectangle<float> (r * 2 - 4.0f, r * 2 - 4.0f).withCentre (c));
         }
 
         const float prog = proc.playProgress();
         if (prog >= 0.0f && prog <= 1.0f)
         {
-            g.setColour (Colours::white);
-            g.fillRect (prog * (float) W, gg.top, 2.0f, gg.bot - gg.top);
+            g.setColour (ink);
+            g.fillRect (gg.x0 + prog * (float) W, gg.top, 2.0f, gg.bot - gg.top);
         }
     }
 
     // stretch grip
     const auto grip = gripArea();
-    g.setColour (colours::wave.withAlpha (drag == Drag::grip ? 0.16f : 0.06f));
+    g.setColour (ink.withAlpha (drag == Drag::grip ? 0.22f : 0.1f));
     g.fillRect (grip);
-    g.setColour (colours::wave.withAlpha (0.35f));
+    g.setColour (ink.withAlpha (0.5f));
     g.fillRect (grip.getX(), grip.getY(), 1.0f, grip.getHeight());
-    g.setColour (colours::wave.withAlpha (0.8f));
+    g.setColour (ink);
     g.fillRect (grip.getCentreX() - 2.5f, grip.getCentreY() - 14.0f, 1.0f, 28.0f);
     g.fillRect (grip.getCentreX() + 1.5f, grip.getCentreY() - 14.0f, 1.0f, 28.0f);
 
-    // text
+    // text rows
+    const auto topRow = Rectangle<float> (gg.x0 + 8.0f, gg.x0 + 5.0f, gg.W - 16.0f, 16.0f);
+    const auto bottomRow = Rectangle<float> (gg.x0 + 8.0f, glass.getBottom() - 21.0f, gg.W - 16.0f, 16.0f);
     const float stretch = proc.apvts.getRawParameterValue ("stretch")->load();
-    g.setFont (mono (13.0f));
-    g.setColour (colours::wave);
-    g.drawText (info.name.toUpperCase(), Rectangle<float> (12, 8, b.getWidth() * 0.55f, 16), Justification::centredLeft, true);
+    g.setColour (ink);
+    g.setFont (mono (13.0f, true));
+    g.drawText (info.name.toUpperCase(), topRow.withWidth (topRow.getWidth() * 0.55f), Justification::centredLeft, true);
     g.setFont (mono (12.0f));
-    g.setColour (colours::wave.withAlpha (0.75f));
-    g.drawText (String (info.duration, 2) + " s  " + String (info.sampleRate / 1000.0, 1) + " kHz  " + (info.channels > 1 ? "stereo" : "mono"),
-                Rectangle<float> (b.getWidth() * 0.5f, 8, b.getWidth() * 0.5f - 12, 16), Justification::centredRight, true);
+    g.drawText (String (info.duration, 2) + "s " + String (info.sampleRate / 1000.0, 1) + "kHz " + (info.channels > 1 ? "ST" : "MONO"),
+                topRow, Justification::centredRight, true);
 
-    String out = "out " + String (gg.T, 2) + " s";
-    if (std::abs (stretch - 1.0f) > 0.005f) out << "  length " << roundToInt (stretch * 100.0f) << "%";
+    String out = "OUT " + String (gg.T, 2) + "s";
+    if (std::abs (stretch - 1.0f) > 0.005f) out << "  LEN " << roundToInt (stretch * 100.0f) << "%";
     const float outW = GlyphArrangement::getStringWidth (mono (12.0f), out) + 2.0f;
-    const auto bottom = Rectangle<float> (12, b.getHeight() - 22, b.getWidth() - 24, 16);
-    g.setColour (colours::wave.withAlpha (0.75f));
-    g.drawText (out, bottom, Justification::centredRight, false);
-    float leftLimit = bottom.getRight() - outW - 12.0f;
+    g.setFont (mono (12.0f));
+    g.drawText (out, bottomRow, Justification::centredRight, false);
+    float leftLimit = bottomRow.getRight() - outW - 12.0f;
     clearArea = {};
     if (! pts.empty())
     {
-        const String clr = "clear points";
-        const float cw = GlyphArrangement::getStringWidth (mono (12.0f), clr) + 2.0f;
-        clearArea = { leftLimit - cw, bottom.getY(), cw, bottom.getHeight() };
-        g.setColour (colours::wave);
-        g.drawText (clr, clearArea, Justification::centredLeft, false);
-        g.fillRect (clearArea.getX(), clearArea.getBottom() - 1.0f, cw - 2.0f, 1.0f);
+        const String clr = "CLEAR PTS";
+        const float cw = GlyphArrangement::getStringWidth (mono (12.0f), clr) + 6.0f;
+        clearArea = { leftLimit - cw, bottomRow.getY() - 1.0f, cw, bottomRow.getHeight() + 2.0f };
+        g.setColour (ink);
+        g.fillRect (clearArea);
+        g.setColour (colours::lcdTop);
+        g.drawText (clr, clearArea, Justification::centred, false);
         leftLimit = clearArea.getX() - 12.0f;
     }
-    g.setColour (colours::wave.withAlpha (0.5f));
-    g.drawText ("Drop a one-shot. Click plays. Cmd-click adds a point, Alt-drag bends.",
-                bottom.withRight (leftLimit), Justification::centredLeft, true);
+    g.setColour (ink.withAlpha (flashTicks > 0 ? 1.0f : 0.6f));
+    g.setFont (mono (12.0f, flashTicks > 0));
+    g.drawText (flashTicks > 0 ? flashText : String ("CLICK=PLAY  CMD+CLICK=POINT  ALT+DRAG=BEND"),
+                bottomRow.withRight (leftLimit), Justification::centredLeft, true);
+
+    // a little glare across the glass
+    g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.10f), 0, glass.getY(), Colours::transparentWhite, 0, glass.getY() + glass.getHeight() * 0.45f, false));
+    g.fillRoundedRectangle (glass, 3.0f);
 
     if (dropHighlight)
     {
-        const auto r = b.reduced (8.0f);
-        g.setColour (colours::screen.withAlpha (0.85f));
-        g.fillRoundedRectangle (r, 4.0f);
+        const auto r = glass.reduced (6.0f);
+        g.setColour (colours::lcdTop.withAlpha (0.92f));
+        g.fillRect (r);
         Path border;
-        border.addRoundedRectangle (r, 4.0f);
+        border.addRectangle (r);
         Path dashed;
         const float dashes[] = { 6.0f, 4.0f };
         PathStrokeType (2.0f).createDashedStroke (dashed, border, dashes, 2);
-        g.setColour (colours::wave);
+        g.setColour (ink);
         g.fillPath (dashed);
-        g.setFont (sans (22.0f, Font::bold));
-        g.drawText ("Drop to load", r, Justification::centred, false);
+        g.setFont (mono (20.0f, true));
+        g.drawText ("DROP TO LOAD", r, Justification::centred, false);
     }
 }
 
 //==============================================================================
 void DragOut::paint (Graphics& g)
 {
-    const auto r = getLocalBounds().toFloat().reduced (1.0f);
-    g.setColour (colours::track);
-    g.fillRoundedRectangle (r, 6.0f);
-    g.setColour (colours::wave);
-    g.setFont (sans (14.0f, Font::bold));
-    g.drawText ("Drag to DAW", r, Justification::centred, false);
+    auto r = getLocalBounds().toFloat().reduced (1.0f);
+    g.setColour (Colours::black.withAlpha (0.6f));
+    g.fillRoundedRectangle (r.translated (0.0f, 2.0f), 3.0f);
+    g.setColour (colours::bezel);
+    g.fillRoundedRectangle (r, 3.0f);
+    g.setColour (colours::accent);
+    g.drawRoundedRectangle (r.reduced (0.5f), 3.0f, 1.0f);
+    g.setFont (sans (11.5f, Font::bold).withExtraKerningFactor (0.08f));
+    g.drawText ("DRAG TO DAW", r, Justification::centred, false);
 }
 
 void DragOut::mouseDrag (const MouseEvent& e)
@@ -433,14 +533,15 @@ using namespace prizan::ui;
 
 namespace layout
 {
-    constexpr int W = 1140, H = 450;
-    const Rectangle<int> panel { 10, 10, 1120, 430 };
-    const Rectangle<int> display { 28, 64, 580, 262 };
-    constexpr int knobX = 630, colW = 112, knob = 84, row0 = 92, row1 = 216;
-    const Rectangle<int> widthKnob { 986, 118, 132, 132 };
-    constexpr int barTop = 340;
-    const Rectangle<int> sliderRow { 28, 352, 1084, 28 };
-    const Rectangle<int> status { 28, 392, 560, 34 };
+    constexpr int W = 1140, H = 460;
+    const Rectangle<int> panel { 8, 8, 1124, 444 };
+    const Rectangle<int> browse { 30, 22, 108, 28 }, prev { 144, 22, 30, 28 }, next { 178, 22, 30, 28 };
+    const Rectangle<int> display { 28, 72, 580, 262 };
+    constexpr int knobX = 628, colW = 112, knob = 88, row0 = 98, row1 = 228;
+    const Rectangle<int> widthKnob { 982, 116, 136, 136 };
+    constexpr int barTop = 350;
+    const Rectangle<int> sliderRow { 28, 362, 1084, 30 };
+    const Rectangle<int> status { 28, 404, 520, 32 };
 }
 
 PrizanEditor::PrizanEditor (PrizanProcessor& p)
@@ -449,15 +550,16 @@ PrizanEditor::PrizanEditor (PrizanProcessor& p)
     setLookAndFeel (&look);
     addAndMakeVisible (display);
 
-    setupKnob (attack, "attack", false);
-    setupKnob (decay, "decay", false);
-    setupKnob (release, "release", false);
-    setupKnob (flanger, "flanger", false);
-    setupKnob (pitch, "pitch", true);
-    setupKnob (tone, "tone", true);
-    setupKnob (width, "width", false);
+    setupKnob (attack, "attack", "Attack", false);
+    setupKnob (decay, "decay", "Decay", false);
+    setupKnob (release, "release", "Release", false);
+    setupKnob (flanger, "flanger", "Flanger", false);
+    setupKnob (pitch, "pitch", "Pitch", true);
+    setupKnob (tone, "tone", "Tone", true);
+    setupKnob (width, "width", "Width", false);
 
-    for (auto [s, id] : { std::pair<Slider*, const char*> { &mix, "mix" }, { &rate, "rate" }, { &feedback, "feedback" }, { &volume, "volume" } })
+    for (auto [s, id, name] : { std::tuple<Slider*, const char*, const char*> { &mix, "mix", "Mix" }, { &rate, "rate", "Flange rate" },
+                                { &feedback, "feedback", "Feedback" }, { &volume, "volume", "Volume" } })
     {
         s->setSliderStyle (Slider::LinearHorizontal);
         s->setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
@@ -465,21 +567,34 @@ PrizanEditor::PrizanEditor (PrizanProcessor& p)
         sliderAttachments.push_back (std::make_unique<SA> (proc.apvts, id, *s));
         auto* prm = proc.apvts.getParameter (id);
         s->setDoubleClickReturnValue (true, prm->convertFrom0to1 (prm->getDefaultValue()));
-        s->onValueChange = [this] { repaint (layout::sliderRow); };
+        s->onValueChange = [this, sl = s, n = String (name)]
+        {
+            repaint (layout::sliderRow);
+            display.flash (n, sl->getTextFromValue (sl->getValue()));
+        };
     }
 
     reverseBtn.setClickingTogglesState (true);
+    reverseBtn.getProperties().set ("led", true);
     reverseAttachment = std::make_unique<BA> (proc.apvts, "reverse", reverseBtn);
     saveBtn.getProperties().set ("go", true);
-    for (auto* b : { &reverseBtn, &loadBtn, &playBtn, &saveBtn }) addAndMakeVisible (*b);
+    for (auto* b : { &browseBtn, &prevBtn, &nextBtn, &reverseBtn, &loadBtn, &playBtn, &saveBtn }) addAndMakeVisible (*b);
     addAndMakeVisible (dragOut);
     dragOut.onStatus = [this] (const String& s) { setStatus (s); };
+
+    browseBtn.setButtonText (String (CharPointer_UTF8 ("BROWSE \xe2\x96\xbe")));
+    prevBtn.setButtonText (String (CharPointer_UTF8 ("\xe2\x97\x80")));
+    nextBtn.setButtonText (String (CharPointer_UTF8 ("\xe2\x96\xb6")));
+    prevBtn.setTooltip ("Previous sample in this folder");
+    nextBtn.setTooltip ("Next sample in this folder");
+    browseBtn.onClick = [this] { showBrowseMenu(); };
+    prevBtn.onClick = [this] { step (-1); };
+    nextBtn.onClick = [this] { step (1); };
 
     playBtn.onClick = [this] { proc.audition(); };
     loadBtn.onClick = [this]
     {
-        chooser = std::make_unique<FileChooser> ("Load a one-shot", File::getSpecialLocation (File::userMusicDirectory),
-                                                 "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.ogg;*.m4a");
+        chooser = std::make_unique<FileChooser> ("Load a one-shot", File::getSpecialLocation (File::userMusicDirectory), audioWildcard);
         chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles,
                               [this] (const FileChooser& fc) { const auto f = fc.getResult(); if (f.existsAsFile()) loadFile (f); });
     };
@@ -511,7 +626,7 @@ PrizanEditor::~PrizanEditor()
     setLookAndFeel (nullptr);
 }
 
-void PrizanEditor::setupKnob (Slider& s, const char* id, bool bipolar)
+void PrizanEditor::setupKnob (Slider& s, const char* id, const char* name, bool bipolar)
 {
     s.setSliderStyle (Slider::RotaryHorizontalVerticalDrag);
     s.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
@@ -523,84 +638,222 @@ void PrizanEditor::setupKnob (Slider& s, const char* id, bool bipolar)
     sliderAttachments.push_back (std::make_unique<SA> (proc.apvts, id, s));
     auto* prm = proc.apvts.getParameter (id);
     s.setDoubleClickReturnValue (true, prm->convertFrom0to1 (prm->getDefaultValue()));
+    s.onValueChange = [this, &s, n = String (name)]
+    {
+        repaint (s.getBounds().withHeight (s.getHeight() + 18));
+        display.flash (n, s.getTextFromValue (s.getValue()));
+    };
 }
 
+//==============================================================================
+void PrizanEditor::showBrowseMenu()
+{
+    menuFiles.clear();
+    const auto current = proc.getSampleFile();
+    constexpr int addId = 100000, removeBase = 200000, revealId = 300000;
+    constexpr size_t maxFiles = 4000;
+
+    std::function<void (PopupMenu&, const File&, int)> addDir = [&] (PopupMenu& m, const File& dir, int depth)
+    {
+        if (depth < 4)
+        {
+            auto subs = dir.findChildFiles (File::findDirectories, false);
+            subs.sort();
+            for (auto& sub : subs)
+            {
+                if (sub.getFileName().startsWithChar ('.')) continue;
+                PopupMenu sm;
+                addDir (sm, sub, depth + 1);
+                if (sm.getNumItems() > 0) m.addSubMenu (sub.getFileName(), sm);
+            }
+        }
+        auto files = dir.findChildFiles (File::findFiles, false, audioWildcard);
+        files.sort();
+        for (auto& f : files)
+        {
+            if (menuFiles.size() >= maxFiles) return;
+            menuFiles.push_back (f);
+            m.addItem ((int) menuFiles.size(), f.getFileNameWithoutExtension(), true, f == current);
+        }
+    };
+
+    PopupMenu menu;
+    const auto folders = library.folders();
+    if (folders.isEmpty())
+        menu.addItem (-1, "No folders yet. Add one below.", false);
+    for (auto& path : folders)
+    {
+        const File dir (path);
+        PopupMenu sm;
+        if (dir.isDirectory()) addDir (sm, dir, 0);
+        if (sm.getNumItems() == 0) sm.addItem (-1, dir.isDirectory() ? "No audio files here" : "Folder not found", false);
+        menu.addSubMenu (dir.getFileName(), sm);
+    }
+    menu.addSeparator();
+    menu.addItem (addId, "Add folder...");
+    if (! folders.isEmpty())
+    {
+        PopupMenu rm;
+        for (int i = 0; i < folders.size(); ++i) rm.addItem (removeBase + i, File (folders[i]).getFileName());
+        menu.addSubMenu ("Remove folder", rm);
+    }
+    if (current.existsAsFile()) menu.addItem (revealId, "Show current sample in Finder");
+
+    menu.showMenuAsync (PopupMenu::Options().withTargetComponent (browseBtn).withMinimumWidth (220),
+        [this, folders] (int id)
+        {
+            if (id <= 0) return;
+            if (id == addId) addFolder();
+            else if (id >= revealId) proc.getSampleFile().revealToUser();
+            else if (id >= removeBase) { library.remove (File (folders[id - removeBase])); setStatus ("Removed " + File (folders[id - removeBase]).getFileName() + " from Browse."); }
+            else if (id <= (int) menuFiles.size()) loadFile (menuFiles[(size_t) id - 1]);
+        });
+}
+
+void PrizanEditor::addFolder()
+{
+    chooser = std::make_unique<FileChooser> ("Add a sample folder", File::getSpecialLocation (File::userMusicDirectory));
+    chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectDirectories,
+                          [this] (const FileChooser& fc)
+                          {
+                              const auto dir = fc.getResult();
+                              if (! dir.isDirectory()) return;
+                              library.add (dir);
+                              setStatus ("Added " + dir.getFileName() + ". Open BROWSE to pick a sample.");
+                          });
+}
+
+void PrizanEditor::step (int delta)
+{
+    const auto current = proc.getSampleFile();
+    if (! current.existsAsFile()) { setStatus ("Load a sample from a folder first, then step through it."); return; }
+    auto files = current.getParentDirectory().findChildFiles (File::findFiles, false, audioWildcard);
+    files.sort();
+    if (files.isEmpty()) return;
+    int i = files.indexOf (current);
+    i = ((i < 0 ? 0 : i + delta) % files.size() + files.size()) % files.size();
+    loadFile (files[i]);
+    proc.audition();
+}
+
+//==============================================================================
 void PrizanEditor::paint (Graphics& g)
 {
-    g.fillAll (colours::page);
+    g.fillAll (colours::room);
     const auto panel = layout::panel.toFloat();
-    DropShadow (Colours::black.withAlpha (0.12f), 18, { 0, 6 }).drawForRectangle (g, layout::panel);
-    g.setColour (colours::panel);
-    g.fillRoundedRectangle (panel, 12.0f);
-
-    // brand: neon-tube lettering, small and centred
+    g.setGradientFill (ColourGradient (colours::panelHi, 0, panel.getY(), colours::panel, 0, panel.getY() + 120.0f, false));
+    g.fillRoundedRectangle (panel, 8.0f);
+    // fine horizontal grain in the plastic
+    for (int y = layout::panel.getY() + 2; y < layout::panel.getBottom() - 2; y += 2)
     {
-        Font f (FontOptions ("Futura", 30.0f, Font::bold));
-        f = f.withExtraKerningFactor (0.22f);
-        GlyphArrangement ga;
-        ga.addLineOfText (f, "PRIZAN", 0.0f, 0.0f);
-        Path p;
-        ga.createPath (p);
-        const auto pb = p.getBounds();
-        p.applyTransform (AffineTransform::translation ((float) getWidth() * 0.5f - pb.getCentreX(), 38.0f - pb.getCentreY()));
-        g.setColour (colours::greenDeep);
-        g.strokePath (p, PathStrokeType (4.2f, PathStrokeType::curved, PathStrokeType::rounded));
-        g.setColour (Colours::white);
-        g.strokePath (p, PathStrokeType (2.2f, PathStrokeType::curved, PathStrokeType::rounded));
-        g.setColour (colours::greenDeep);
-        g.strokePath (p, PathStrokeType (0.8f));
+        g.setColour ((y / 2) % 2 ? Colours::white.withAlpha (0.012f) : Colours::black.withAlpha (0.03f));
+        g.fillRect (layout::panel.getX() + 2, y, layout::panel.getWidth() - 4, 1);
+    }
+    g.setColour (Colours::black);
+    g.drawRoundedRectangle (panel, 8.0f, 1.5f);
+
+    // corner screws
+    for (auto pt : { Point<float> (20, 20), Point<float> (1120, 20), Point<float> (20, 440), Point<float> (1120, 440) })
+    {
+        const auto r = Rectangle<float> (9, 9).withCentre (pt);
+        g.setGradientFill (ColourGradient (Colour (0xff8a8d92), r.getX(), r.getY(), Colour (0xff3a3c40), r.getRight(), r.getBottom(), false));
+        g.fillEllipse (r);
+        g.setColour (Colours::black.withAlpha (0.7f));
+        g.drawLine (pt.x - 3.0f, pt.y + 1.5f, pt.x + 3.0f, pt.y - 1.5f, 1.2f);
     }
 
-    // knob labels
-    g.setColour (colours::ink);
-    g.setFont (sans (15.0f, Font::bold));
-    const char* names[] = { "Attack", "Decay", "Release", "Flanger", "Pitch", "Tone" };
+    // badge: italic wordmark + model plate, centred
+    {
+        const String word = "PRIZAN", model = "PZ-1";
+        const auto wf = sans (30.0f, Font::bold | Font::italic).withExtraKerningFactor (0.14f);
+        const auto mf = sans (13.0f, Font::bold).withExtraKerningFactor (0.06f);
+        const float ww = GlyphArrangement::getStringWidth (wf, word), mw = GlyphArrangement::getStringWidth (mf, model) + 14.0f;
+        const float total = ww + 10.0f + mw, x = (float) getWidth() * 0.5f - total * 0.5f;
+        g.setColour (colours::silk);
+        g.setFont (wf);
+        g.drawText (word, Rectangle<float> (x, 18.0f, ww + 6.0f, 36.0f), Justification::centredLeft, false);
+        const auto plate = Rectangle<float> (x + ww + 10.0f, 27.0f, mw, 19.0f);
+        g.setColour (colours::accent);
+        g.fillRoundedRectangle (plate, 2.0f);
+        g.setColour (Colour (0xff1a1206));
+        g.setFont (mf);
+        g.drawText (model, plate, Justification::centred, false);
+    }
+    g.setColour (colours::silkDim);
+    g.setFont (sans (11.0f, Font::bold).withExtraKerningFactor (0.18f));
+    g.drawText ("16-VOICE ONE-SHOT SAMPLER", 820, 26, 292, 20, Justification::centredRight);
+
+    // accent stripes
+    g.setColour (colours::accent);
+    g.fillRect (28, 60, 1084, 3);
+    g.setColour (colours::silkDim.withAlpha (0.5f));
+    g.fillRect (28, 65, 1084, 1);
+
+    // knob labels and values
+    const char* names[] = { "ATTACK", "DECAY", "RELEASE", "FLANGER", "PITCH", "TONE" };
+    Slider* knobs[] = { &attack, &decay, &release, &flanger, &pitch, &tone };
     for (int i = 0; i < 6; ++i)
     {
-        const int col = i % 3, y = (i < 3 ? layout::row0 : layout::row1) - 22;
-        g.drawText (names[i], layout::knobX + col * layout::colW, y, layout::colW, 18, Justification::centred);
+        const auto kb = knobs[i]->getBounds();
+        g.setColour (colours::silk);
+        g.setFont (sans (11.5f, Font::bold).withExtraKerningFactor (0.12f));
+        g.drawText (names[i], kb.getX() - 12, kb.getY() - 20, kb.getWidth() + 24, 16, Justification::centred);
+        g.setColour (colours::silkDim);
+        g.setFont (mono (11.0f));
+        g.drawText (knobs[i]->getTextFromValue (knobs[i]->getValue()), kb.getX() - 12, kb.getBottom(), kb.getWidth() + 24, 16, Justification::centred);
     }
-    g.setColour (colours::line);
-    g.fillRect (970, 70, 1, 250);
-    g.setColour (colours::ink);
-    g.setFont (sans (17.0f, Font::bold).withExtraKerningFactor (0.06f));
-    g.drawText ("WIDTH", layout::widthKnob.getX(), layout::widthKnob.getY() - 26, layout::widthKnob.getWidth(), 20, Justification::centred);
-    g.setColour (colours::muted);
-    g.setFont (sans (12.0f));
-    g.drawFittedText ("0 is mono, 100% as recorded,\n200% extra wide", layout::widthKnob.getX() - 10, layout::widthKnob.getBottom() + 6,
-                      layout::widthKnob.getWidth() + 20, 34, Justification::centredTop, 2);
+    // engraved divider
+    g.setColour (Colours::black.withAlpha (0.7f));
+    g.fillRect (962, 80, 1, 250);
+    g.setColour (Colours::white.withAlpha (0.07f));
+    g.fillRect (963, 80, 1, 250);
 
-    // utility bar
+    const auto wk = width.getBounds();
+    g.setColour (colours::silk);
+    g.setFont (sans (14.0f, Font::bold).withExtraKerningFactor (0.2f));
+    g.drawText ("WIDTH", wk.getX(), wk.getY() - 26, wk.getWidth(), 20, Justification::centred);
+    g.setColour (colours::silkDim);
+    g.setFont (mono (12.0f));
+    g.drawText (width.getTextFromValue (width.getValue()), wk.getX(), wk.getBottom() + 2, wk.getWidth(), 16, Justification::centred);
+    g.setFont (sans (10.5f, Font::bold).withExtraKerningFactor (0.1f));
+    g.drawFittedText ("MONO  /  100% AS RECORDED\n/  200% WIDE", wk.getX() - 16, wk.getBottom() + 24, wk.getWidth() + 32, 30, Justification::centredTop, 2);
+
+    // common bar
     {
         Path bar;
-        bar.addRoundedRectangle ((float) layout::panel.getX(), (float) layout::barTop, (float) layout::panel.getWidth(),
-                                 (float) (layout::panel.getBottom() - layout::barTop), 12.0f, 12.0f, false, false, true, true);
-        g.setColour (colours::bar);
+        bar.addRoundedRectangle ((float) layout::panel.getX() + 1.5f, (float) layout::barTop, (float) layout::panel.getWidth() - 3.0f,
+                                 (float) (layout::panel.getBottom() - layout::barTop) - 1.5f, 7.0f, 7.0f, false, false, true, true);
+        g.setColour (colours::panelLo);
         g.fillPath (bar);
-        g.setColour (colours::line);
-        g.fillRect (layout::panel.getX(), layout::barTop, layout::panel.getWidth(), 1);
+        g.setColour (Colours::black.withAlpha (0.8f));
+        g.fillRect (layout::panel.getX() + 2, layout::barTop, layout::panel.getWidth() - 4, 1);
+        g.setColour (Colours::white.withAlpha (0.06f));
+        g.fillRect (layout::panel.getX() + 2, layout::barTop + 1, layout::panel.getWidth() - 4, 1);
     }
-    const char* barNames[] = { "Mix", "Flange rate", "Feedback", "Volume" };
+    const char* barNames[] = { "MIX", "FLANGE RATE", "FEEDBACK", "VOLUME" };
     Slider* bars[] = { &mix, &rate, &feedback, &volume };
     for (int i = 0; i < 4; ++i)
     {
         const auto cell = bars[i]->getBounds();
-        g.setColour (colours::ink);
-        g.setFont (sans (14.0f, Font::bold));
-        g.drawText (barNames[i], cell.getX() - 86, cell.getY(), 82, cell.getHeight(), Justification::centredRight);
-        g.setColour (colours::muted);
+        g.setColour (colours::silk);
+        g.setFont (sans (11.5f, Font::bold).withExtraKerningFactor (0.1f));
+        g.drawText (barNames[i], cell.getX() - 92, cell.getY(), 86, cell.getHeight(), Justification::centredRight);
+        g.setColour (colours::silkDim);
         g.setFont (mono (11.0f));
-        g.drawText (bars[i]->getTextFromValue (bars[i]->getValue()), cell.getRight() + 6, cell.getY(), 62, cell.getHeight(), Justification::centredLeft);
+        g.drawText (bars[i]->getTextFromValue (bars[i]->getValue()), cell.getRight() + 8, cell.getY(), 64, cell.getHeight(), Justification::centredLeft);
     }
-    g.setColour (colours::muted);
-    g.setFont (sans (13.0f));
-    g.drawText (status.isNotEmpty() ? status : String ("Play MIDI notes (C3 is the original pitch) or click the screen."),
+    g.setColour (colours::silkDim);
+    g.setFont (sans (12.5f));
+    g.drawText (status.isNotEmpty() ? status : String ("Play MIDI notes (C3 = original pitch), click the screen, or press Space."),
                 layout::status, Justification::centredLeft, true);
 }
 
 void PrizanEditor::resized()
 {
     display.setBounds (layout::display);
+    browseBtn.setBounds (layout::browse);
+    prevBtn.setBounds (layout::prev);
+    nextBtn.setBounds (layout::next);
     Slider* knobs[] = { &attack, &decay, &release, &flanger, &pitch, &tone };
     for (int i = 0; i < 6; ++i)
     {
@@ -613,21 +866,22 @@ void PrizanEditor::resized()
     const int cellW = layout::sliderRow.getWidth() / 4;
     Slider* bars[] = { &mix, &rate, &feedback, &volume };
     for (int i = 0; i < 4; ++i)
-        bars[i]->setBounds (layout::sliderRow.getX() + i * cellW + 90, layout::sliderRow.getY(), cellW - 90 - 72, layout::sliderRow.getHeight());
+        bars[i]->setBounds (layout::sliderRow.getX() + i * cellW + 96, layout::sliderRow.getY(), cellW - 96 - 76, layout::sliderRow.getHeight());
 
     int x = 1112;
-    const int y = 392, h = 34;
+    const int y = 404, h = 32;
     auto place = [&] (Component& c, int w) { x -= w; c.setBounds (x, y, w, h); x -= 8; };
-    place (dragOut, 124);
-    place (saveBtn, 96);
-    place (playBtn, 66);
+    place (dragOut, 118);
+    place (saveBtn, 92);
+    place (playBtn, 64);
     place (loadBtn, 90);
-    place (reverseBtn, 84);
+    place (reverseBtn, 92);
 }
 
 void PrizanEditor::timerCallback()
 {
     display.refreshPoints();
+    display.tick();
     display.repaint();
     if (statusTicks > 0 && --statusTicks == 0) { status.clear(); repaint (layout::status); }
 }
@@ -642,17 +896,14 @@ void PrizanEditor::setStatus (const String& s)
 bool PrizanEditor::keyPressed (const KeyPress& k)
 {
     if (k == KeyPress::spaceKey) { proc.audition(); return true; }
+    if (k == KeyPress::leftKey) { step (-1); return true; }
+    if (k == KeyPress::rightKey) { step (1); return true; }
     return false;
-}
-
-static bool isAudio (const String& f)
-{
-    return File (f).hasFileExtension ("wav;aif;aiff;flac;mp3;ogg;m4a;caf");
 }
 
 bool PrizanEditor::isInterestedInFileDrag (const StringArray& files)
 {
-    for (auto& f : files) if (isAudio (f)) return true;
+    for (auto& f : files) if (isAudio (File (f)) || File (f).isDirectory()) return true;
     return false;
 }
 
@@ -662,14 +913,18 @@ void PrizanEditor::fileDragExit (const StringArray&) { display.dropHighlight = f
 void PrizanEditor::filesDropped (const StringArray& files, int, int)
 {
     display.dropHighlight = false;
-    for (auto& f : files)
-        if (isAudio (f)) { loadFile (File (f)); break; }
+    for (auto& path : files)
+    {
+        const File f (path);
+        if (f.isDirectory()) { library.add (f); setStatus ("Added folder " + f.getFileName() + " to BROWSE."); break; }
+        if (isAudio (f)) { loadFile (f); break; }
+    }
     display.repaint();
 }
 
 void PrizanEditor::loadFile (const File& f)
 {
     String err;
-    if (proc.loadSampleFile (f, err)) setStatus ("Loaded " + f.getFileName() + ". Play a note or click the screen.");
+    if (proc.loadSampleFile (f, err)) setStatus ("Loaded " + f.getFileName() + ". Arrow keys step through the folder.");
     else setStatus (err);
 }

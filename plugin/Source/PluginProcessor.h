@@ -56,6 +56,7 @@ public:
         std::vector<float> mins, maxs;   // 2048 display bins of the original, before reverse/stretch
     };
     const SampleInfo& getSampleInfo() const { return info; }
+    juce::File getSampleFile() const { return sampleFile; }
     std::atomic<int> sampleVersion { 0 }, pointsVersion { 0 };
 
 private:
