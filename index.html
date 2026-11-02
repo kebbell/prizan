@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>Prizan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=JetBrains+Mono:wght@500&family=Monoton&display=swap">
+<style>
+/* Layout: one white unit. Row 1: drop-in sample screen | 3×2 sound knobs | big WIDTH knob.
+   Row 2: a thin utility bar (mix, flanger rate/feedback, volume, reverse, play, save). */
+:root {
+  --page: #e4ebe5;
+  --panel: #ffffff;
+  --line: #d6dfd8;
+  --ink: #16241b;
+  --muted: #6a7b70;
+  --green: #1fae5b;
+  --green-deep: #15824a;
+  --track: #183a26;
+  --screen: #0d2217;
+  --screen-hi: #14301f;
+  --wave: #5ef29a;
+  --f-ui: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  --f-num: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--page); color: var(--ink); font-family: var(--f-ui);
+  padding-block: 32px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-user-select: none; user-select: none;
+}
+button, input { font-family: var(--f-ui); }
+:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+
+.unit {
+  max-width: 1240px; margin: 0 auto; background: var(--panel); border-radius: 12px;
+  box-shadow: 0 1px 0 #fff inset, 0 0 0 1px var(--line), 0 18px 40px -22px rgba(20,50,30,.35);
+  overflow: hidden;
+}
+.brand {
+  margin: 0; padding: 12px 16px 0; text-align: center; line-height: 1;
+  font-family: 'Monoton', var(--f-ui); font-weight: 400; font-size: 26px; letter-spacing: .14em; padding-left: calc(16px + .14em);
+  color: var(--green-deep);
+}
+.main { display: flex; flex-wrap: wrap; padding: 14px 18px 18px; align-items: stretch; }
+.grip {
+  position: absolute; right: 0; top: 34px; bottom: 30px; width: 16px; cursor: ew-resize; touch-action: none;
+  display: grid; place-items: center; border-left: 1px solid rgba(94,242,154,.35); background: rgba(94,242,154,.06);
+}
+.grip::before { content: ""; width: 4px; height: 28px; border-left: 1px solid var(--wave); border-right: 1px solid var(--wave); opacity: .8; }
+.grip:hover, .grip.on { background: rgba(94,242,154,.16); }
+.stext.bot > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clr {
+  pointer-events: auto; border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; color: var(--wave); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap;
+}
+
+/* ---------- screen ---------- */
+.screen {
+  flex: 1 1 420px; min-width: 0; position: relative; border-radius: 6px; cursor: pointer; min-height: 248px;
+  background: linear-gradient(180deg, var(--screen-hi), var(--screen));
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.5), inset 0 2px 10px rgba(0,0,0,.5);
+  overflow: hidden;
+}
+.screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.stext {
+  position: absolute; left: 12px; right: 12px; display: flex; justify-content: space-between; gap: 12px;
+  font-family: var(--f-num); font-size: 12px; color: rgba(94,242,154,.75); pointer-events: none;
+}
+.stext.top { top: 10px; } .stext.bot { bottom: 10px; color: rgba(94,242,154,.5); }
+.stext .name { color: var(--wave); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drop {
+  position: absolute; inset: 8px; border: 2px dashed var(--wave); border-radius: 4px;
+  display: grid; place-items: center; background: rgba(13,34,23,.85);
+  font-size: 22px; font-weight: 700; letter-spacing: .04em; color: var(--wave); pointer-events: none;
+}
+
+/* ---------- knobs ---------- */
+.knobs { flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, 112px); gap: 10px 4px; padding: 4px 18px 0 24px; align-content: center; }
+.wcol { flex: 0 0 auto; display: flex; flex-direction: column; justify-content: center; padding: 0 6px 0 22px; border-left: 1px solid var(--line); }
+.kb { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.klabel { font-size: 15px; font-weight: 600; color: var(--ink); }
+.knob { position: relative; width: 84px; height: 84px; cursor: ns-resize; touch-action: none; border-radius: 50%; }
+.knob svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.knob .trk { fill: none; stroke: var(--track); stroke-width: 11; }
+.knob .val { fill: none; stroke: var(--green); stroke-width: 11; }
+.knob .disc {
+  position: absolute; inset: 17px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 40% 30%, #ffffff, #e9eeea);
+  box-shadow: 0 2px 4px rgba(0,0,0,.25), inset 0 -1px 2px rgba(0,0,0,.08);
+  font-family: var(--f-num); font-size: 11px; color: var(--muted); white-space: nowrap;
+}
+.knob .tick { position: absolute; left: 50%; top: 17px; width: 2px; height: 8px; margin-left: -1px; background: var(--green-deep); transform-origin: 1px 25px; border-radius: 1px; }
+.knob.big { width: 132px; height: 132px; }
+.knob.big .disc { inset: 22px; font-size: 14px; }
+.knob.big .tick { top: 22px; height: 12px; transform-origin: 1px 44px; }
+.knob.big .trk, .knob.big .val { stroke-width: 9; }
+.wcol .klabel { font-size: 17px; font-weight: 700; letter-spacing: .06em; }
+.wnote { font-size: 12px; color: var(--muted); text-align: center; max-width: 150px; margin: 4px auto 0; }
+
+/* ---------- utility bar ---------- */
+.bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px;
+  padding: 12px 18px; border-top: 1px solid var(--line); background: #f5f8f5;
+}
+.sl { display: flex; align-items: center; gap: 10px; flex: 1 1 160px; min-width: 0; }
+.sl label { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.sl output { font-family: var(--f-num); font-size: 11px; color: var(--muted); min-width: 52px; text-align: right; }
+input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; min-width: 60px; height: 22px; background: transparent; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--green) var(--p, 50%), var(--track) var(--p, 50%)); }
+input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--green) var(--p, 50%), var(--track) var(--p, 50%)); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--green-deep), 0 2px 3px rgba(0,0,0,.25); }
+input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--green-deep), 0 2px 3px rgba(0,0,0,.25); }
+.btns { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.btn {
+  border: 0; cursor: pointer; height: 34px; padding: 0 14px; border-radius: 6px;
+  font-size: 14px; font-weight: 700; letter-spacing: .02em;
+  background: #fff; color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.08);
+}
+.btn[aria-pressed="true"] { background: var(--track); color: var(--wave); box-shadow: none; }
+.btn.go { background: var(--green); color: #fff; box-shadow: 0 1px 0 var(--green-deep); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .5; cursor: default; }
+.status { font-size: 13px; color: var(--muted); padding: 0 18px 12px; background: #f5f8f5; min-height: 1.2em; }
+
+@media (max-width: 1060px) {
+  .knobs { padding: 18px 8px 0 0; flex: 1 1 auto; justify-content: center; }
+  .wcol { padding: 18px 0 0 18px; }
+}
+@media (max-width: 560px) {
+  .main { padding: 12px; }
+  .screen { flex-basis: 100%; min-height: 200px; }
+  .knobs { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; padding: 16px 0 0; }
+  .knob { width: 74px; height: 74px; }
+  .knob .disc { inset: 15px; font-size: 10px; }
+  .knob .tick { top: 15px; transform-origin: 1px 22px; }
+  .wcol { border-left: 0; border-top: 1px solid var(--line); width: 100%; padding: 14px 0 0; margin-top: 14px; align-items: center; }
+  .btns { margin-left: 0; }
+}
+</style>
+
+<div class="unit">
+  <h1 class="brand">PRIZAN</h1>
+  <div class="main">
+    <div class="screen" id="screen" tabindex="0" role="button" aria-label="Sample display. Drop an audio file here, click to play">
+      <canvas id="wave"></canvas>
+      <div class="stext top"><span class="name" id="sName">DEMO STAB</span><span id="sInfo">1.60 s · 44.1 kHz</span></div>
+      <div class="stext bot"><span>Drop a one-shot · click or Space plays · ⌘/Ctrl-click adds a point · Alt-drag bends</span><span><button class="clr" id="clr" type="button" hidden>clear points</button> <span id="sOut"></span></span></div>
+      <div class="grip" id="grip" role="slider" tabindex="0" aria-label="Sample length (stretch)" title="Drag to stretch or shorten the sample. Double-click resets."></div>
+      <div class="drop" id="drop" hidden>Drop to load</div>
+    </div>
+    <div class="knobs" id="knobs"></div>
+    <div class="wcol" id="wcol"></div>
+  </div>
+  <div class="bar">
+    <div class="sl"><label for="mix">Mix</label><input type="range" id="mix" min="0" max="100"><output id="mixO"></output></div>
+    <div class="sl"><label for="rate">Flange rate</label><input type="range" id="rate" min="0" max="100"><output id="rateO"></output></div>
+    <div class="sl"><label for="feedback">Feedback</label><input type="range" id="feedback" min="0" max="100"><output id="feedbackO"></output></div>
+    <div class="sl"><label for="volume">Volume</label><input type="range" id="volume" min="0" max="100"><output id="volumeO"></output></div>
+    <div class="btns">
+      <button class="btn" id="reverse" type="button" aria-pressed="false">Reverse</button>
+      <button class="btn" id="load" type="button">Load file</button>
+      <button class="btn" id="play" type="button">▶ Play</button>
+      <button class="btn go" id="save" type="button">Save WAV</button>
+      <input type="file" id="file" accept="audio/*,.wav,.aif,.aiff,.mp3,.flac,.ogg,.m4a" hidden>
+    </div>
+  </div>
+  <div class="status" id="status" aria-live="polite"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ---------------- parameters ---------------- */
+const DEF = { attack: .002, decay: 10, release: .08, flanger: .3, pitch: 0, tone: 0, width: 1, mix: 1, rate: .3, feedback: .45, volume: .8, reverse: false, stretch: 1, points: [], endBend: 0 };
+const P = { ...DEF, points: [] };
+try { const s = JSON.parse(localStorage.getItem('shotbox-s80-v3') || '{}'); for (const k in DEF) if (k in s) P[k] = s[k]; } catch (e) {}
+if (!Array.isArray(P.points)) P.points = [];
+let saveT;
+const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem('shotbox-s80-v3', JSON.stringify(P)); } catch (e) {} }, 300); };
+const ms = v => v < 1 ? (v < .01 ? (v * 1000).toFixed(1) : Math.round(v * 1000)) + ' ms' : v.toFixed(2) + ' s';
+const pct = v => Math.round(v * 100) + '%';
+const sgn = v => v > 0 ? '+' : '';
+
+/* ---------------- sample ---------------- */
+let sample = null;
+function prep(name, chs, sr) {
+  const len = chs[0].length, mono = new Float32Array(len);
+  for (let i = 0; i < len; i++) { let v = 0; for (const c of chs) v += c[i]; mono[i] = v / chs.length; }
+  const N = 2048, mins = new Float32Array(N), maxs = new Float32Array(N);
+  for (let b = 0; b < N; b++) {
+    const a = Math.floor(b * len / N), z = Math.max(a + 1, Math.floor((b + 1) * len / N));
+    let lo = 0, hi = 0;
+    for (let i = a; i < z && i < len; i++) { const v = mono[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    mins[b] = lo; maxs[b] = hi;
+  }
+  const mk = rev => {
+    const b = new AudioBuffer({ numberOfChannels: chs.length, length: len, sampleRate: sr });
+    chs.forEach((c, i) => b.copyToChannel(rev ? c.slice().reverse() : c, i));
+    return b;
+  };
+  return { name, sr, len, dur: len / sr, ch: chs.length, mins, maxs, fwd: mk(false), rev: null, mkRev: () => mk(true) };
+}
+const bufferOf = s => P.reverse ? (s.rev || (s.rev = s.mkRev())) : s.fwd;
+
+// Pitch-preserving stretch (WSOLA): overlapping grains, each nudged to line up with the last.
+function wsola(chs, s) {
+  const N = 2048, Hs = 512, tol = 384, Ha = Hs / s, len = chs[0].length, outLen = Math.max(1, Math.round(len * s));
+  const win = new Float32Array(N); for (let i = 0; i < N; i++) win[i] = .5 - .5 * Math.cos(2 * Math.PI * i / N);
+  const mono = new Float32Array(len); for (let i = 0; i < len; i++) { let v = 0; for (const c of chs) v += c[i]; mono[i] = v; }
+  const out = chs.map(() => new Float32Array(outLen + N)), norm = new Float32Array(outLen + N);
+  let prev = 0;
+  for (let k = 0; k * Hs < outLen; k++) {
+    const target = Math.round(k * Ha);
+    let best = Math.min(target, Math.max(0, len - 1));
+    if (k > 0) {
+      const ref = prev + Hs; let bc = -Infinity;
+      for (let d = -tol; d <= tol; d += 2) {
+        const p = target + d; if (p < 0 || p >= len) continue;
+        let c = 0; for (let i = 0; i < 1024 && ref + i < len && p + i < len; i += 4) c += mono[ref + i] * mono[p + i];
+        if (c > bc) { bc = c; best = p; }
+      }
+    }
+    const o = k * Hs;
+    for (let i = 0; i < N; i++) {
+      const w = k === 0 && i < N / 2 ? 1 : win[i]; // first grain keeps the transient sharp
+      const idx = best + i;
+      if (idx < len) for (let c = 0; c < chs.length; c++) out[c][o + i] += chs[c][idx] * w;
+      norm[o + i] += w;
+    }
+    prev = best;
+  }
+  return out.map(ch => { const r = new Float32Array(outLen); for (let i = 0; i < outLen; i++) r[i] = norm[i] > 1e-3 ? ch[i] / Math.max(norm[i], .5) : 0; return r; });
+}
+function playBuffer(s) {
+  const src = bufferOf(s);
+  if (Math.abs(P.stretch - 1) < .005) return src;
+  const key = P.stretch.toFixed(3) + (P.reverse ? 'r' : 'f');
+  if (s.sKey === key) return s.sBuf;
+  const chs = []; for (let c = 0; c < src.numberOfChannels; c++) chs.push(src.getChannelData(c));
+  const st = wsola(chs, P.stretch);
+  const b = new AudioBuffer({ numberOfChannels: st.length, length: st[0].length, sampleRate: s.sr });
+  st.forEach((d, i) => b.copyToChannel(d, i));
+  s.sKey = key; s.sBuf = b;
+  return b;
+}
+const outDur = () => sample.dur * P.stretch / Math.pow(2, P.pitch / 12);
+
+function demo() {
+  const SR = 44100, T = 1.6, LEN = Math.round(SR * T), L = new Float32Array(LEN), R = new Float32Array(LEN), f0 = 220;
+  const add = (ch, f, a, d) => { const w = 2 * Math.PI * f / SR, k = Math.exp(-d / SR); let e = a; for (let i = 0; i < LEN; i++) { ch[i] += e * Math.sin(w * i); e *= k; } };
+  for (let n = 1; n <= 30; n++) {
+    if (f0 * n > 16000) break;
+    const a = 1 / n, d = 1.6 + n * .28;
+    add(L, (f0 - .6) * n, a * .6, d); add(R, (f0 - .6) * n, a * .25, d);
+    add(L, (f0 + .9) * n, a * .25, d); add(R, (f0 + .9) * n, a * .6, d);
+  }
+  add(L, f0 / 2, .35, 1.8); add(R, f0 / 2, .35, 1.8);
+  let pk = 0; for (let i = 0; i < LEN; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i]));
+  for (let i = 0; i < LEN; i++) { const fade = Math.min(1, i / 40); L[i] *= .9 / pk * fade; R[i] *= .9 / pk * fade; }
+  return prep('Demo stab', [L, R], SR);
+}
+
+/* ---------------- envelope (shared by playback, drawing and export) ---------------- */
+// Timeline is the output length (sample length after pitch). Release always lands on the end.
+function adrAt(t, T) {
+  const R = Math.min(P.release, T * .98), A = Math.min(P.attack, Math.max(.0005, T - R));
+  const off = P.decay >= 9.99, tau = P.decay / 4.6;
+  const pre = x => (x < A ? x / A : 1) * (off || x < A ? 1 : Math.exp(-(x - A) / tau));
+  const rs = T - R;
+  if (t <= rs) return pre(t);
+  return pre(rs) * Math.max(0, 1 - (t - rs) / R);
+}
+// Hand-drawn points scale the knob envelope. Each point's b bends the segment that ends at it.
+function shapeAt(u) {
+  const pts = P.points;
+  if (!pts.length) return 1;
+  let x0 = 0, y0 = 1;
+  for (let i = 0; i <= pts.length; i++) {
+    const p = i < pts.length ? pts[i] : { x: 1, y: 1, b: P.endBend };
+    if (u <= p.x) {
+      const span = p.x - x0, f = span > 0 ? (u - x0) / span : 1;
+      return y0 + (p.y - y0) * Math.pow(f, Math.pow(2, p.b * 3));
+    }
+    x0 = p.x; y0 = p.y;
+  }
+  return 1;
+}
+const envAt = (t, T) => adrAt(t, T) * shapeAt(t / T);
+function envCurve(T) {
+  const n = clamp(Math.round(T * 1000), 16, 30000), c = new Float32Array(n);
+  for (let i = 0; i < n; i++) c[i] = envAt(i / (n - 1) * T, T);
+  c[n - 1] = 0;
+  return c;
+}
+
+/* ---------------- audio graph ---------------- */
+function build(ac, withLimiter) {
+  const G = v => { const g = ac.createGain(); g.gain.value = v; return g; };
+  const input = G(1); input.channelCount = 2; input.channelCountMode = 'explicit'; input.channelInterpretation = 'speakers';
+  const plain = G(0), wetAll = G(1), vol = G(P.volume);
+  input.connect(plain); plain.connect(vol);
+  // tone: one knob, left darkens (low-pass), right thins (high-pass)
+  const hp = ac.createBiquadFilter(), lp = ac.createBiquadFilter();
+  hp.type = 'highpass'; lp.type = 'lowpass'; hp.Q.value = lp.Q.value = .707;
+  input.connect(hp); hp.connect(lp);
+  // flanger: stereo pair of short modulated delays, LFO inverted on the right
+  const dry = G(1), wet = G(0), fx = G(1); fx.channelCount = 2; fx.channelCountMode = 'explicit';
+  const fs = ac.createChannelSplitter(2), fm = ac.createChannelMerger(2);
+  const dL = ac.createDelay(.05), dR = ac.createDelay(.05), fbL = G(0), fbR = G(0);
+  const lfo = ac.createOscillator(); lfo.type = 'triangle';
+  const lfoL = G(0), lfoR = G(0);
+  lfo.connect(lfoL); lfoL.connect(dL.delayTime); lfo.connect(lfoR); lfoR.connect(dR.delayTime);
+  lp.connect(dry); dry.connect(fx);
+  lp.connect(fs); fs.connect(dL, 0); fs.connect(dR, 1);
+  dL.connect(fbL); fbL.connect(dL); dR.connect(fbR); fbR.connect(dR);
+  dL.connect(fm, 0, 0); dR.connect(fm, 0, 1); fm.connect(wet); wet.connect(fx);
+  lfo.start(0);
+  // width: mid/side; above 100% a delayed, high-passed copy of mid widens mono samples
+  const ws = ac.createChannelSplitter(2), wm = ac.createChannelMerger(2);
+  const mid = G(1), side = G(1), sideW = G(1), inv = G(-1), mL = G(.5), mR = G(.5), sL = G(.5), sR = G(-.5);
+  fx.connect(ws);
+  ws.connect(mL, 0); ws.connect(mR, 1); mL.connect(mid); mR.connect(mid);
+  ws.connect(sL, 0); ws.connect(sR, 1); sL.connect(side); sR.connect(side);
+  const hd = ac.createDelay(.05); hd.delayTime.value = .013;
+  const hh = ac.createBiquadFilter(); hh.type = 'highpass'; hh.frequency.value = 280;
+  const haas = G(0);
+  mid.connect(hd); hd.connect(hh); hh.connect(haas); haas.connect(side);
+  side.connect(sideW);
+  mid.connect(wm, 0, 0); mid.connect(wm, 0, 1);
+  sideW.connect(wm, 0, 0); sideW.connect(inv); inv.connect(wm, 0, 1);
+  wm.connect(wetAll); wetAll.connect(vol);
+  let out = vol;
+  if (withLimiter) {
+    const lim = ac.createDynamicsCompressor();
+    lim.threshold.value = -3; lim.knee.value = 2; lim.ratio.value = 16; lim.attack.value = .002; lim.release.value = .1;
+    vol.connect(lim); out = lim;
+  }
+  return { ac, input, out, n: { plain, wetAll, vol, hp, lp, dry, wet, dL, dR, fbL, fbR, lfo, lfoL, lfoR, sideW, haas } };
+}
+function apply(g, instant) {
+  const n = g.n, t = g.ac.currentTime;
+  const set = (p, v) => instant ? p.setValueAtTime(v, 0) : p.setTargetAtTime(v, t, .02);
+  set(n.plain.gain, 1 - P.mix); set(n.wetAll.gain, P.mix); set(n.vol.gain, P.volume);
+  set(n.lp.frequency, P.tone < 0 ? 20000 * Math.pow(2, P.tone * 7) : 20000);
+  set(n.hp.frequency, P.tone > 0 ? 20 * Math.pow(2, P.tone * 7.5) : 20);
+  const amp = P.flanger * .0034;
+  set(n.lfo.frequency, P.rate);
+  set(n.lfoL.gain, amp); set(n.lfoR.gain, -amp);
+  set(n.dL.delayTime, .0006 + amp); set(n.dR.delayTime, .0006 + amp);
+  set(n.fbL.gain, P.feedback); set(n.fbR.gain, P.feedback);
+  set(n.dry.gain, 1 - P.flanger * .4); set(n.wet.gain, P.flanger * .55);
+  set(n.sideW.gain, P.width); set(n.haas.gain, Math.max(0, P.width - 1) * .32);
+}
+function startVoice(ac, dest, t0) {
+  const src = ac.createBufferSource();
+  src.buffer = playBuffer(sample);
+  const rate = Math.pow(2, P.pitch / 12), T = src.buffer.duration / rate;
+  src.playbackRate.value = rate;
+  const g = ac.createGain(); g.gain.value = 0;
+  g.gain.setValueCurveAtTime(envCurve(T), t0, T);
+  src.connect(g); g.connect(dest);
+  src.start(t0); src.stop(t0 + T + .01);
+  return { src, g, t0, T };
+}
+
+let ctx = null, live = null, voice = null;
+function ensureAudio() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    live = build(ctx, true); apply(live, true); live.out.connect(ctx.destination);
+  }
+  if (ctx.state !== 'running') ctx.resume();
+}
+function play() {
+  if (!sample) return;
+  ensureAudio();
+  if (voice) { // choke the previous hit
+    const v = voice, now = ctx.currentTime;
+    v.c.gain.setTargetAtTime(0, now, .006);
+    try { v.src.stop(now + .05); } catch (e) {}
+  }
+  const c = ctx.createGain(); c.connect(live.input);
+  const v = startVoice(ctx, c, ctx.currentTime + .005);
+  v.c = c;
+  v.src.onended = () => { c.disconnect(); if (voice === v) voice = null; };
+  voice = v;
+}
+
+/* ---------------- knobs ---------------- */
+const fmtTone = v => Math.abs(v) < .005 ? 'Flat' : sgn(v) + Math.round(v * 100) + '%';
+const fmtPitch = v => { const r = Math.round(v * 100) / 100; return (r === 0 ? '0' : sgn(r) + (Number.isInteger(r) ? r : r.toFixed(2))) + ' st'; };
+const KNOBS = [
+  // key, label, min, max, curve, format, bipolar
+  ['attack',  'Attack',  .0005, 2,  'log', ms],
+  ['decay',   'Decay',   .03,  10,  'log', v => v >= 9.99 ? 'Off' : ms(v)],
+  ['release', 'Release', .005,  3,  'log', ms],
+  ['flanger', 'Flanger', 0,     1,  'lin', pct],
+  ['pitch',   'Pitch',   -24,  24,  'lin', fmtPitch, true],
+  ['tone',    'Tone',    -1,    1,  'lin', fmtTone, true],
+];
+const R0 = 40, polar = a => [50 + R0 * Math.sin(a * Math.PI / 180), 50 - R0 * Math.cos(a * Math.PI / 180)];
+function arc(a0, a1) {
+  if (Math.abs(a1 - a0) < .01) return '';
+  const lo = Math.min(a0, a1), hi = Math.max(a0, a1);
+  const [x0, y0] = polar(lo), [x1, y1] = polar(hi);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${R0} ${R0} 0 ${hi - lo > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+function makeKnob(host, key, label, min, max, curve, fmt, bipolar, big) {
+  const toV = t => curve === 'log' ? min * Math.pow(max / min, t) : min + (max - min) * t;
+  const toT = v => clamp(curve === 'log' ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min), 0, 1);
+  const wrap = document.createElement('div'); wrap.className = 'kb';
+  wrap.innerHTML = `<span class="klabel">${label}</span><div class="knob${big ? ' big' : ''}" tabindex="0" role="slider" aria-label="${label}"><svg viewBox="0 0 100 100" aria-hidden="true"><path class="trk" d="${arc(-135, 135)}"/><path class="val"/></svg><div class="disc"></div><span class="tick"></span></div>`;
+  host.append(wrap);
+  const knob = wrap.querySelector('.knob'), val = wrap.querySelector('.val'), disc = wrap.querySelector('.disc'), tick = wrap.querySelector('.tick');
+  let t = toT(P[key]);
+  const render = () => {
+    const a = -135 + 270 * t;
+    val.setAttribute('d', arc(bipolar ? 0 : -135, a));
+    tick.style.transform = `rotate(${a}deg)`;
+    disc.textContent = fmt(P[key]);
+    knob.setAttribute('aria-valuetext', fmt(P[key]));
+  };
+  const setT = (nt, fine) => {
+    t = clamp(nt, 0, 1);
+    let v = toV(t);
+    if (bipolar && Math.abs(t - .5) < .012) { t = .5; v = toV(.5); }
+    if (key === 'pitch') v = fine ? Math.round(v * 100) / 100 : Math.round(v);
+    P[key] = v;
+    render(); changed();
+  };
+  let sy = 0, sx = 0, st = 0;
+  knob.addEventListener('pointerdown', e => { e.preventDefault(); knob.focus({ preventScroll: true }); knob.setPointerCapture(e.pointerId); sy = e.clientY; sx = e.clientX; st = t; });
+  knob.addEventListener('pointermove', e => {
+    if (!knob.hasPointerCapture(e.pointerId)) return;
+    const d = (sy - e.clientY) + (e.clientX - sx) * .5;
+    setT(st + d / (e.shiftKey ? 800 : 200), e.shiftKey);
+  });
+  knob.addEventListener('dblclick', () => setT(toT(DEF[key])));
+  knob.addEventListener('wheel', e => { e.preventDefault(); setT(t - Math.sign(e.deltaY) * (e.shiftKey ? .004 : .02), e.shiftKey); }, { passive: false });
+  knob.addEventListener('keydown', e => {
+    const s = e.shiftKey ? .004 : .02;
+    const m = { ArrowUp: s, ArrowRight: s, ArrowDown: -s, ArrowLeft: -s, PageUp: .1, PageDown: -.1 }[e.key];
+    if (m) { e.preventDefault(); e.stopPropagation(); setT(t + m, e.shiftKey); }
+  });
+  render();
+}
+KNOBS.forEach(k => makeKnob($('knobs'), ...k));
+makeKnob($('wcol'), 'width', 'WIDTH', 0, 2, 'lin', v => v < .005 ? 'Mono' : pct(v), false, true);
+$('wcol').insertAdjacentHTML('beforeend', '<div class="wnote">0 is mono, 100% as recorded, 200% extra wide</div>');
+
+/* ---------------- utility bar ---------------- */
+const SLIDERS = {
+  mix:      [v => v / 100,                      v => v * 100,                              v => Math.round(v * 100) + '% fx'],
+  rate:     [v => .05 * Math.pow(160, v / 100), v => Math.log(v / .05) / Math.log(160) * 100, v => v.toFixed(2) + ' Hz'],
+  feedback: [v => v / 100 * .9,                 v => v / .9 * 100,                         pct],
+  volume:   [v => v / 100,                      v => v * 100,                              pct],
+};
+Object.entries(SLIDERS).forEach(([key, [fromS, toS, fmt]]) => {
+  const el = $(key), out = $(key + 'O');
+  const paint = () => { el.style.setProperty('--p', el.value + '%'); out.textContent = fmt(P[key]); };
+  el.value = toS(P[key]); paint();
+  el.addEventListener('input', () => { P[key] = fromS(+el.value); paint(); changed(); });
+  el.addEventListener('dblclick', () => { P[key] = DEF[key]; el.value = toS(P[key]); paint(); changed(); });
+});
+const revBtn = $('reverse');
+const paintRev = () => revBtn.setAttribute('aria-pressed', String(P.reverse));
+revBtn.addEventListener('click', () => { P.reverse = !P.reverse; paintRev(); changed(); });
+paintRev();
+
+function changed() { if (live) apply(live); save(); dirty = true; }
+
+/* ---------------- display ---------------- */
+const canvas = $('wave'), screen = $('screen');
+let dirty = true, geo = null, hot = -1;
+function draw() {
+  const d = devicePixelRatio || 1, W = Math.round(canvas.clientWidth * d), H = Math.round(canvas.clientHeight * d);
+  if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; dirty = true; }
+  const playing = voice && ctx && ctx.currentTime < voice.t0 + voice.T + .05;
+  if (!dirty && !playing) return;
+  dirty = false;
+  const g = canvas.getContext('2d');
+  g.clearRect(0, 0, W, H);
+  if (!sample || !W) return;
+  const top = 34 * d, bot = H - 30 * d, mid = (top + bot) / 2, amp = (bot - top) / 2 * .96;
+  g.fillStyle = 'rgba(94,242,154,.08)';
+  for (let i = 1; i < 8; i++) g.fillRect(Math.round(i * W / 8), top, d, bot - top);
+  g.fillRect(0, mid, W, d);
+  const T = outDur(), N = sample.mins.length;
+  geo = { W, d, top, bot, mid, amp, T };
+  const envY = new Float32Array(W);
+  for (let x = 0; x < W; x++) envY[x] = envAt((x + .5) / W * T, T);
+  // shade what the envelope cuts away
+  g.fillStyle = 'rgba(0,0,0,.35)';
+  for (const s of [-1, 1]) {
+    g.beginPath(); g.moveTo(0, s < 0 ? top : bot);
+    for (let x = 0; x < W; x++) g.lineTo(x, mid + s * envY[x] * amp);
+    g.lineTo(W, s < 0 ? top : bot); g.closePath(); g.fill();
+  }
+  // original (dim) and shaped (bright) waveform
+  for (let pass = 0; pass < 2; pass++) {
+    g.fillStyle = pass ? '#5ef29a' : 'rgba(94,242,154,.22)';
+    for (let x = 0; x < W; x++) {
+      const b0 = Math.floor(x / W * N), b1 = Math.max(b0 + 1, Math.floor((x + 1) / W * N));
+      let lo = 0, hi = 0;
+      for (let b = b0; b < b1 && b < N; b++) { const i = P.reverse ? N - 1 - b : b; if (sample.mins[i] < lo) lo = sample.mins[i]; if (sample.maxs[i] > hi) hi = sample.maxs[i]; }
+      const k = pass ? envY[x] : 1, y0 = mid - hi * k * amp, y1 = mid - lo * k * amp;
+      g.fillRect(x, y0, 1, Math.max(d * .6, y1 - y0));
+    }
+  }
+  g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1.5 * d;
+  g.beginPath();
+  for (let x = 0; x < W; x++) { const y = mid - envY[x] * amp; x ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.stroke();
+  P.points.forEach((p, i) => {
+    const x = p.x * W, y = mid - adrAt(p.x * T, T) * p.y * amp;
+    g.beginPath(); g.arc(x, y, (i === hot ? 6 : 4.5) * d, 0, Math.PI * 2);
+    g.fillStyle = '#ffffff'; g.fill();
+    g.lineWidth = 2 * d; g.strokeStyle = '#1fae5b'; g.stroke();
+  });
+  if (playing) {
+    const p = (ctx.currentTime - voice.t0) / voice.T;
+    if (p >= 0 && p <= 1) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(p * W), top, 2 * d, bot - top); }
+  }
+  $('sOut').textContent = `out ${T.toFixed(2)} s` + (Math.abs(P.stretch - 1) < .005 ? '' : ` · length ${Math.round(P.stretch * 100)}%`);
+  $('clr').hidden = !P.points.length;
+}
+function frame() { draw(); requestAnimationFrame(frame); }
+
+function setSample(s) {
+  sample = s;
+  $('sName').textContent = s.name.toUpperCase();
+  $('sInfo').textContent = `${s.dur.toFixed(2)} s · ${(s.sr / 1000).toFixed(1)} kHz · ${s.ch > 1 ? 'stereo' : 'mono'}`;
+  dirty = true;
+}
+
+/* ---------------- loading ---------------- */
+const status = $('status');
+let statusT;
+const say = msg => { status.textContent = msg; clearTimeout(statusT); statusT = setTimeout(() => { status.textContent = ''; }, 6000); };
+async function loadFile(file) {
+  if (!file) return;
+  ensureAudio();
+  say('Loading ' + file.name + '…');
+  try {
+    const ab = await ctx.decodeAudioData(await file.arrayBuffer());
+    let start = ab.length;
+    for (let c = 0; c < ab.numberOfChannels; c++) {
+      const d = ab.getChannelData(c);
+      for (let i = 0; i < Math.min(start, d.length); i++) if (Math.abs(d[i]) > .003) { start = i; break; }
+    }
+    if (start >= ab.length) { say('That file is silent. Try another one-shot.'); return; }
+    start = Math.max(0, start - Math.round(ab.sampleRate * .002)); // trim leading silence so hits land on time
+    const chs = [];
+    for (let c = 0; c < Math.min(2, ab.numberOfChannels); c++) chs.push(ab.getChannelData(c).slice(start));
+    setSample(prep(file.name.replace(/\.[^.]+$/, ''), chs, ab.sampleRate));
+    say(`Loaded ${file.name}. Press Space or click the screen to hear it.`);
+  } catch (e) {
+    say("Couldn't read that file. Use WAV, AIFF, MP3 or FLAC.");
+  }
+}
+$('load').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
+let depth = 0;
+const drop = $('drop');
+document.addEventListener('dragenter', e => { e.preventDefault(); depth++; drop.hidden = false; });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; drop.hidden = true; } });
+document.addEventListener('drop', e => {
+  e.preventDefault(); depth = 0; drop.hidden = true;
+  const f = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('audio') || /\.(wav|aiff?|mp3|flac|ogg|m4a)$/i.test(f.name));
+  if (f) loadFile(f); else say("That isn't an audio file. Drop a WAV, AIFF, MP3 or FLAC.");
+});
+
+/* ---------------- playing ---------------- */
+// screen: plain click plays; ⌘/Ctrl-click adds a point; drag a point to move it;
+// double-click a point to remove it; Alt-drag a line between points to bend it.
+let drag = null;
+const local = e => { const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1; return { x: (e.clientX - r.left) * d, y: (e.clientY - r.top) * d }; };
+const levelAt = y => clamp((geo.mid - y) / geo.amp, 0, 1);
+function hitPoint(x, y) {
+  let best = -1, bd = 12 * geo.d;
+  P.points.forEach((p, i) => { const px = p.x * geo.W, py = geo.mid - adrAt(p.x * geo.T, geo.T) * p.y * geo.amp, dd = Math.hypot(px - x, py - y); if (dd < bd) { bd = dd; best = i; } });
+  return best;
+}
+function movePoint(i, x, y) {
+  const pts = P.points, lo = i ? pts[i - 1].x + .002 : .002, hi = i < pts.length - 1 ? pts[i + 1].x - .002 : .998;
+  const u = clamp(x / geo.W, lo, hi), a = adrAt(u * geo.T, geo.T), v = levelAt(y);
+  pts[i].x = u; pts[i].y = a > .02 ? clamp(v / a, 0, 1) : v;
+}
+screen.addEventListener('pointerdown', e => {
+  if (e.target.closest('.grip, .clr')) return;
+  e.preventDefault();
+  if (!geo || !sample) return play();
+  const { x, y } = local(e), hit = hitPoint(x, y);
+  if (hit >= 0) drag = { type: 'point', i: hit };
+  else if (e.metaKey || e.ctrlKey) {
+    const u = clamp(x / geo.W, .002, .998);
+    let i = P.points.findIndex(p => p.x > u); if (i < 0) i = P.points.length;
+    P.points.splice(i, 0, { x: u, y: shapeAt(u), b: 0 });
+    drag = { type: 'point', i }; movePoint(i, x, y);
+  } else if (e.altKey) {
+    const u = x / geo.W;
+    let s = P.points.findIndex(p => p.x >= u); if (s < 0) s = P.points.length;
+    const y0 = s ? P.points[s - 1].y : 1, y1 = s < P.points.length ? P.points[s].y : 1;
+    drag = { type: 'bend', s, sy: y, b0: s < P.points.length ? P.points[s].b : P.endBend, dir: Math.sign(y0 - y1) || 1 };
+  } else return play();
+  hot = drag.type === 'point' ? drag.i : -1;
+  screen.setPointerCapture(e.pointerId); changed();
+});
+screen.addEventListener('pointermove', e => {
+  if (!geo) return;
+  const { x, y } = local(e);
+  if (!drag) { const h = hitPoint(x, y); if (h !== hot) { hot = h; dirty = true; } screen.style.cursor = h >= 0 ? 'grab' : ''; return; }
+  if (drag.type === 'point') movePoint(drag.i, x, y);
+  else {
+    const b = clamp(drag.b0 + drag.dir * (drag.sy - y) / (110 * geo.d), -1, 1);
+    if (drag.s < P.points.length) P.points[drag.s].b = b; else P.endBend = b;
+  }
+  changed();
+});
+const endDrag = () => { if (drag) { drag = null; changed(); } };
+screen.addEventListener('pointerup', endDrag);
+screen.addEventListener('pointercancel', endDrag);
+screen.addEventListener('dblclick', e => {
+  if (!geo) return;
+  const { x, y } = local(e), i = hitPoint(x, y);
+  if (i >= 0) { P.points.splice(i, 1); if (!P.points.length) P.endBend = 0; hot = -1; changed(); }
+});
+$('clr').addEventListener('click', e => { e.stopPropagation(); P.points = []; P.endBend = 0; hot = -1; changed(); });
+
+// stretch grip: drag sideways to lengthen or shorten the sample, pitch stays put
+const grip = $('grip');
+let gs = null;
+const setStretch = v => { P.stretch = Math.abs(v - 1) < .02 ? 1 : clamp(v, .25, 4); grip.setAttribute('aria-valuetext', Math.round(P.stretch * 100) + '%'); changed(); };
+grip.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); grip.setPointerCapture(e.pointerId); gs = { x: e.clientX, v: P.stretch }; grip.classList.add('on'); });
+grip.addEventListener('pointermove', e => { if (gs) setStretch(gs.v * Math.pow(2, (e.clientX - gs.x) / (e.shiftKey ? 480 : 120))); });
+const gEnd = () => { if (!gs) return; gs = null; grip.classList.remove('on'); if (sample) playBuffer(sample); };
+grip.addEventListener('pointerup', gEnd);
+grip.addEventListener('pointercancel', gEnd);
+grip.addEventListener('dblclick', e => { e.stopPropagation(); setStretch(1); });
+grip.addEventListener('keydown', e => {
+  const m = { ArrowRight: 1.05, ArrowUp: 1.05, ArrowLeft: 1 / 1.05, ArrowDown: 1 / 1.05 }[e.key];
+  if (m) { e.preventDefault(); e.stopPropagation(); setStretch(P.stretch * m); }
+});
+grip.setAttribute('aria-valuetext', Math.round(P.stretch * 100) + '%');
+screen.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); play(); } });
+$('play').addEventListener('click', play);
+document.addEventListener('keydown', e => {
+  if (e.code !== 'Space' || e.repeat || e.target.tagName === 'INPUT') return;
+  e.preventDefault(); play();
+});
+
+/* ---------------- export: render offline, wrap the WAV in a zip ---------------- */
+// .wav isn't on the viewer's download allowlist, .zip is
+function encodeWav(buf, gain) {
+  const ch = buf.numberOfChannels, n = buf.length, sr = buf.sampleRate, bytes = n * ch * 2;
+  const v = new DataView(new ArrayBuffer(44 + bytes));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + bytes, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * ch * 2, true); v.setUint16(32, ch * 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, bytes, true);
+  const data = []; for (let c = 0; c < ch; c++) data.push(buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { const s = clamp(data[c][i] * gain, -1, 1); v.setInt16(o, Math.round(s < 0 ? s * 32768 : s * 32767), true); o += 2; }
+  return new Uint8Array(v.buffer);
+}
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u8 => { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipOne(name, u8) {
+  const nm = new TextEncoder().encode(name), crc = crc32(u8), sz = u8.length;
+  const lh = new DataView(new ArrayBuffer(30));
+  lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(12, 0x21, true);
+  lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nm.length, true);
+  const cd = new DataView(new ArrayBuffer(46));
+  cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(14, 0x21, true);
+  cd.setUint32(16, crc, true); cd.setUint32(20, sz, true); cd.setUint32(24, sz, true); cd.setUint16(28, nm.length, true);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, 1, true); end.setUint16(10, 1, true);
+  end.setUint32(12, 46 + nm.length, true); end.setUint32(16, 30 + nm.length + sz, true);
+  return new Blob([lh, nm, u8, cd, nm, end]);
+}
+async function renderOut() {
+  const T = outDur(), tail = .05 + P.flanger * P.feedback * .4;
+  const sr = sample.sr, oc = new OfflineAudioContext(2, Math.ceil((T + tail) * sr), sr);
+  const gph = build(oc, false); apply(gph, true); gph.out.connect(oc.destination);
+  startVoice(oc, gph.input, 0);
+  return oc.startRendering();
+}
+let downloads = null;
+if (window.claude && window.claude.use) window.claude.use('downloads').then(d => { downloads = d; }).catch(() => {});
+$('save').addEventListener('click', async () => {
+  if (!sample) return;
+  const standalone = !window.claude; // hosted outside claude.ai (e.g. the repo copy): a plain download works
+  if (!downloads && !standalone) { say("Saving isn't available in this view. Open the page on claude.ai to save files."); return; }
+  const btn = $('save'); btn.disabled = true;
+  try {
+    const out = await renderOut();
+    let pk = 0; for (let c = 0; c < out.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i])); }
+    const base = (sample.name + '-prizan').replace(/[^\w\- ]+/g, '').trim() || 'prizan';
+    const wav = encodeWav(out, pk > .98 ? .98 / pk : 1);
+    if (standalone) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' })); a.download = base + '.wav';
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      say(`Saved ${base}.wav.`);
+      return;
+    }
+    await downloads.save({ filename: base + '.zip', data: zipOne(base + '.wav', wav) });
+    say(`Saved ${base}.zip. Unzip it to get ${base}.wav.`);
+  } catch (e) {
+    if (e && e.code === 'declined') say('Save cancelled.');
+    else if (e && e.code === 'rate_limited') say('A save prompt is already open. Finish that one first.');
+    else say("Couldn't save the file. Try again in a moment.");
+  } finally { btn.disabled = false; }
+});
+
+/* ---------------- boot ---------------- */
+setSample(demo());
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
